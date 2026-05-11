@@ -67,6 +67,16 @@ class PlayerActivityDB {
                 
                 CREATE INDEX IF NOT EXISTS idx_activity_events_player_id ON activity_events(player_id);
                 CREATE INDEX IF NOT EXISTS idx_activity_events_timestamp ON activity_events(timestamp);
+
+                CREATE TABLE IF NOT EXISTS name_history (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    player_id INTEGER NOT NULL,
+                    name TEXT NOT NULL,
+                    first_seen INTEGER NOT NULL,
+                    FOREIGN KEY (player_id) REFERENCES players(id)
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_name_history_player_id ON name_history(player_id);
             `);
             
             // Prepare statements
@@ -81,6 +91,21 @@ class PlayerActivityDB {
             
             this.updatePlayerNameStmt = this.db.prepare(`
                 UPDATE players SET name = ? WHERE bm_id = ? AND server_id = ? AND guild_id = ?
+            `);
+
+            this.insertNameHistoryStmt = this.db.prepare(`
+                INSERT INTO name_history (player_id, name, first_seen)
+                SELECT ?, ?, ?
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM name_history WHERE player_id = ? AND name = ?
+                )
+            `);
+
+            this.getNameHistoryStmt = this.db.prepare(`
+                SELECT name, first_seen
+                FROM name_history
+                WHERE player_id = ?
+                ORDER BY first_seen ASC
             `);
             
             this.insertActivityEventStmt = this.db.prepare(`
@@ -172,13 +197,20 @@ class PlayerActivityDB {
     getOrCreatePlayer(bmId, name, serverId, guildId) {
         // Insert player if not exists
         this.insertPlayerStmt.run(bmId, name, serverId, guildId);
-        
-        // Update name if it changed
-        this.updatePlayerNameStmt.run(name, bmId, serverId, guildId);
-        
+
         // Get player ID
         const player = this.getPlayerIdStmt.get(bmId, serverId, guildId);
-        return player ? player.id : null;
+        const playerId = player ? player.id : null;
+
+        if (playerId !== null) {
+            // Update current name
+            this.updatePlayerNameStmt.run(name, bmId, serverId, guildId);
+
+            // Record name in history if not already there
+            this.insertNameHistoryStmt.run(playerId, name, Date.now(), playerId, name);
+        }
+
+        return playerId;
     }
     
 
@@ -219,6 +251,24 @@ class PlayerActivityDB {
         } catch (error) {
             console.error('Error getting player info:', error);
             return null;
+        }
+    }
+
+    /**
+     * Get name history for a player
+     * @param {string} bmId - Player's Battlemetrics ID
+     * @param {string} serverId - Server ID
+     * @param {string} guildId - Discord Guild ID
+     * @returns {Array} - Array of { name, first_seen } ordered oldest to newest
+     */
+    getNameHistory(bmId, serverId, guildId) {
+        try {
+            const player = this.getPlayerIdStmt.get(bmId, serverId, guildId);
+            if (!player) return [];
+            return this.getNameHistoryStmt.all(player.id);
+        } catch (error) {
+            console.error('Error getting name history:', error);
+            return [];
         }
     }
     

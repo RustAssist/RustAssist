@@ -2051,6 +2051,78 @@ class RustPlus extends RustPlusLib {
         return response;
     }
 
+    getCommandWhois(command) {
+        const args = command.trim().split(' ');
+        if (args.length < 2) {
+            return `${Client.client.intlGet(this.guildId, 'usage')}: ${this.generalSettings.prefix}${Client.client.intlGet(this.guildId, 'commandSyntaxWhois')} <${Client.client.intlGet(this.guildId, 'playerName')}>`;
+        }
+
+        const playerName = args.slice(1).join(' ');
+        const instance = Client.client.getInstance(this.guildId);
+        const server = instance.serverList[this.serverId];
+
+        if (!server || !server.battlemetricsId) {
+            return Client.client.intlGet(this.guildId, 'invalidBattlemetricsId');
+        }
+
+        const battlemetricsId = server.battlemetricsId;
+        const bmInstance = Client.client.battlemetricsInstances[battlemetricsId];
+
+        if (!bmInstance || !bmInstance.lastUpdateSuccessful) {
+            return Client.client.intlGet(this.guildId, 'battlemetricsInstanceCouldNotBeFound', {
+                id: battlemetricsId
+            });
+        }
+
+        const players = bmInstance.getOnlinePlayerIdsOrderedByTime()
+            .concat(bmInstance.getOfflinePlayerIdsOrderedByLeastTimeSinceOnline());
+
+        const matchingPlayers = [];
+        for (const playerId of players) {
+            if (bmInstance.players[playerId]['name'].toLowerCase().includes(playerName.toLowerCase())) {
+                matchingPlayers.push(playerId);
+            }
+        }
+
+        if (matchingPlayers.length === 0) {
+            return Client.client.intlGet(this.guildId, 'couldNotFindAnyPlayers');
+        }
+
+        if (matchingPlayers.length > 1) {
+            let response = Client.client.intlGet(this.guildId, 'multiplePlayersFound') + '\n';
+            for (let i = 0; i < Math.min(matchingPlayers.length, 3); i++) {
+                const pid = matchingPlayers[i];
+                response += `${i + 1}. ${bmInstance.players[pid]['name']}\n`;
+            }
+            if (matchingPlayers.length > 3) {
+                response += Client.client.intlGet(this.guildId, 'andMorePlayers', {
+                    number: matchingPlayers.length - 3
+                });
+            }
+            return response;
+        }
+
+        const playerId = matchingPlayers[0];
+        const player = bmInstance.players[playerId];
+        const steamId = player.steamId || playerId;
+        const currentName = player.name;
+
+        const nameHistory = PlayerActivityDB.getNameHistory(steamId, this.serverId, this.guildId);
+
+        if (!nameHistory || nameHistory.length === 0) {
+            return Client.client.intlGet(this.guildId, 'noNameHistoryData', { name: currentName });
+        }
+
+        let response = `${Client.client.intlGet(this.guildId, 'whoisTitle').replace('{name}', currentName)}\n`;
+        response += `${Client.client.intlGet(this.guildId, 'whoisNameHistory')}:\n`;
+        for (const entry of nameHistory) {
+            const date = new Date(entry.first_seen).toISOString().slice(0, 10);
+            response += `  • ${entry.name} (${date})\n`;
+        }
+
+        return response;
+    }
+
     getCommandPlayer(command) {
         const instance = Client.client.getInstance(this.guildId);
         const battlemetricsId = instance.serverList[this.serverId].battlemetricsId;

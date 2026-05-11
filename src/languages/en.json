@@ -168,6 +168,7 @@
     "commandSyntaxUpkeep": "upkeep",
     "commandSyntaxUptime": "uptime",
     "commandSyntaxWipe": "wipe",
+    "commandSyntaxWhois": "whois",
     "commandSyntaxWood": "wood",
     "commandsAlarmDesc": "Operations on Smart Alarms.",
     "commandsAlarmEditDesc": "Edit the properties of a Smart Alarm.",
@@ -802,5 +803,14 @@
     "displayingPlayerSearchResults": "Displaying player search results.",
     "duration": "Duration",
     "confidence": "Confidence",
-    "hours": "hours"
+    "hours": "hours",
+    "commandsWhoisDesc": "Look up known aliases (name history) for a player.",
+    "commandsWhoisPlayerDesc": "Search for a player by name.",
+    "commandsWhoisPlayerIdDesc": "Search for a player by Battlemetrics ID.",
+    "whoisTitle": "Whois: {name}",
+    "whoisNameHistory": "Name History",
+    "whoisCurrentName": "Current Name",
+    "whoisFirstSeen": "First Seen",
+    "noNameHistoryData": "No name history available for {name}.",
+    "whoisNoData": "No whois data found for {name}."
 }
