@@ -25,6 +25,10 @@
         "@liamcottle/push-receiver": "^0.0.4",
         "@liamcottle/rustplus.js": "git+https://github.com/alexemanuelol/rustplus.js.git#089cfd3db1b04709911948bce669273139c6a124",
         "axios": "^1.3.4",
+        "better-sqlite3": "^12.9.0",
+        "canvas": "^2.11.2",
+        "chart.js": "^4.4.0",
+        "chartjs-chart-matrix": "^2.0.1",
         "colors": "^1.4.0",
         "discord-api-types": "^0.38.14",
         "discord.js": "^14.21.0",
@@ -33,11 +37,12 @@
         "jimp": "^0.22.7",
         "libsodium-wrappers": "^0.7.11",
         "lodash": "^4.17.21",
+        "luxon": "^3.4.4",
+        "sqlite3": "^5.1.7",
         "translate": "^1.4.1",
         "ts-node": "^10.9.2",
         "typescript": "^5.8.3",
-        "winston": "^3.8.2",
-        "sqlite3": "^5.1.7"
+        "winston": "^3.8.2"
     },
     "resolutions": {
         "jpeg-js": "0.4.4",

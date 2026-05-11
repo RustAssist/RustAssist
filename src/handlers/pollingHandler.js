@@ -32,15 +32,28 @@ const VendingMachines = require('../handlers/vendingMachineHandler.js');
 
 module.exports = {
     pollingHandler: async function (rustplus, client) {
+        const MAX_CONSECUTIVE_TIMEOUTS = 5;
+
         /* Poll information such as info, mapMarkers, teamInfo and time */
         let info = await rustplus.getInfoAsync();
-        if (!(await rustplus.isResponseValid(info))) return;
+        if (!(await rustplus.isResponseValid(info))) {
+            rustplus.consecutiveTimeouts += 1;
+            if (rustplus.consecutiveTimeouts >= MAX_CONSECUTIVE_TIMEOUTS) {
+                rustplus.log(client.intlGet(null, 'warningCap'),
+                    `${MAX_CONSECUTIVE_TIMEOUTS} consecutive polling timeouts — forcing reconnect.`);
+                rustplus.consecutiveTimeouts = 0;
+                rustplus.disconnect();
+            }
+            return;
+        }
         let mapMarkers = await rustplus.getMapMarkersAsync();
-        if (!(await rustplus.isResponseValid(mapMarkers))) return;
+        if (!(await rustplus.isResponseValid(mapMarkers))) { rustplus.consecutiveTimeouts += 1; return; }
         let teamInfo = await rustplus.getTeamInfoAsync();
-        if (!(await rustplus.isResponseValid(teamInfo))) return;
+        if (!(await rustplus.isResponseValid(teamInfo))) { rustplus.consecutiveTimeouts += 1; return; }
         let time = await rustplus.getTimeAsync();
-        if (!(await rustplus.isResponseValid(time))) return;
+        if (!(await rustplus.isResponseValid(time))) { rustplus.consecutiveTimeouts += 1; return; }
+
+        rustplus.consecutiveTimeouts = 0;
 
         if (rustplus.isFirstPoll) {
             rustplus.info = new Info(info.info);

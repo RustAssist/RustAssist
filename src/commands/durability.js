@@ -104,9 +104,7 @@ module.exports = {
 				return null;
 			}
 		}
-		const itemName = client.items.getName(itemId);
-
-		const raidDetails = client.rustlabs.getDurabilityDetailsByName(raidItemName);
+		const raidDetails = client.rustlabs.getDurabilityDetailsByName(itemId);
 		if (raidDetails === null) {
 			return null;
 		}

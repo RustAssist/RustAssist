@@ -23,6 +23,7 @@ const Constants = require('../util/constants.js');
 const DiscordMessages = require('../discordTools/discordMessages.js');
 const InGameChatHandler = require('../handlers/inGameChatHandler.js');
 const SmartSwitchGroupHandler = require('../handlers/smartSwitchGroupHandler.js');
+const SmartSwitchHandler = require('../handlers/smartSwitchHandler.js');
 const TeamChatHandler = require("../handlers/teamChatHandler.js");
 const TeamHandler = require('../handlers/teamHandler.js');
 
@@ -188,6 +189,38 @@ async function messageBroadcastEntityChangedSmartAlarm(rustplus, client, message
 
         if (instance.generalSettings.smartAlarmNotifyInGame) {
             rustplus.sendInGameMessage(`${server.alarms[entityId].name}: ${server.alarms[entityId].message}`);
+        }
+
+        /* Execute configured alarm actions */
+        const actions = server.alarms[entityId].actions || [];
+        for (const action of actions) {
+            const inst = client.getInstance(rustplus.guildId);
+            const srv = inst.serverList[serverId];
+            if (!srv) continue;
+
+            if (action.type === 'switch') {
+                if (!srv.switches[action.targetId]) continue;
+                const current = srv.switches[action.targetId].active;
+                const desired = action.state === 'toggle' ? !current :
+                    action.state === 'on';
+                await SmartSwitchHandler.smartSwitchCommandTurnOnOff(
+                    rustplus, client, action.targetId, desired);
+            }
+            else if (action.type === 'group') {
+                if (!srv.switchGroups[action.targetId]) continue;
+                const groupSwitches = srv.switchGroups[action.targetId].switches || [];
+                let desired;
+                if (action.state === 'toggle') {
+                    /* Toggle = opposite of first switch in group */
+                    const firstId = groupSwitches[0];
+                    desired = firstId && srv.switches[firstId] ? !srv.switches[firstId].active : true;
+                }
+                else {
+                    desired = action.state === 'on';
+                }
+                await SmartSwitchGroupHandler.TurnOnOffGroup(
+                    client, rustplus, rustplus.guildId, serverId, action.targetId, desired);
+            }
         }
     }
 

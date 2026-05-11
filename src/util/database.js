@@ -151,6 +151,14 @@ class PlayerActivityDB {
                 ORDER BY e.timestamp DESC
                 LIMIT ?
             `);
+
+            this.getAllPlayerEventsStmt = this.db.prepare(`
+                SELECT e.event_type, e.timestamp
+                FROM activity_events e
+                WHERE e.player_id = ?
+                  AND e.timestamp >= ?
+                ORDER BY e.timestamp ASC
+            `);
             
             console.log('PlayerActivityDB initialized successfully');
         } catch (error) {
@@ -283,6 +291,40 @@ class PlayerActivityDB {
             return [];
         }
     }
+
+    /**
+     * Get all activity events for a player within a time window, oldest first.
+     * Also includes the last 'online' event before the cutoff so in-progress
+     * sessions that started before the window are not lost.
+     * @param {string} bmId
+     * @param {string} serverId
+     * @param {string} guildId
+     * @param {number} cutoffMs - Unix epoch ms; only events >= cutoff are returned
+     * @returns {Array} Array of { event_type, timestamp }
+     */
+    getAllPlayerEvents(bmId, serverId, guildId, cutoffMs) {
+        try {
+            const player = this.getPlayerIdStmt.get(bmId, serverId, guildId);
+            if (!player) return [];
+
+            const events = this.getAllPlayerEventsStmt.all(player.id, cutoffMs);
+
+            // Prepend the last 'online' event before the cutoff so sessions
+            // that started just before the window boundary are captured.
+            const lastBefore = this.db.prepare(`
+                SELECT event_type, timestamp
+                FROM activity_events
+                WHERE player_id = ? AND event_type = 'online' AND timestamp < ?
+                ORDER BY timestamp DESC
+                LIMIT 1
+            `).get(player.id, cutoffMs);
+
+            return lastBefore ? [lastBefore, ...events] : events;
+        } catch (error) {
+            console.error('Error getting all player events:', error);
+            return [];
+        }
+    }
     
     /**
      * Analyze when a player is most likely to be offline
@@ -347,6 +389,103 @@ class PlayerActivityDB {
         }
     }
     
+    /**
+     * Get name history for a player by BM ID across all servers in a guild.
+     */
+    getNameHistoryByBmId(bmId, guildId) {
+        try {
+            return this.db.prepare(`
+                SELECT nh.name, MIN(nh.first_seen) AS first_seen
+                FROM name_history nh
+                JOIN players p ON nh.player_id = p.id
+                WHERE p.bm_id = ? AND p.guild_id = ?
+                GROUP BY nh.name
+                ORDER BY first_seen ASC
+            `).all(bmId, guildId);
+        } catch (error) {
+            console.error('Error getting name history by BM ID:', error);
+            return [];
+        }
+    }
+
+    /**
+     * Search for players by name (current or historical) within a guild.
+     * Returns one result per unique bm_id, using the player's current name.
+     */
+    searchPlayersByName(name, guildId, like = false) {
+        try {
+            const value = like ? `%${name}%` : name;
+            const op = like ? 'LIKE' : '=';
+            return this.db.prepare(`
+                SELECT p.bm_id, p.name
+                FROM players p
+                WHERE p.guild_id = ?
+                  AND (
+                    LOWER(p.name) ${op} LOWER(?)
+                    OR EXISTS (
+                        SELECT 1 FROM name_history nh
+                        WHERE nh.player_id = p.id AND LOWER(nh.name) ${op} LOWER(?)
+                    )
+                  )
+                GROUP BY p.bm_id
+            `).all(guildId, value, value);
+        } catch (error) {
+            console.error('Error searching players by name:', error);
+            return [];
+        }
+    }
+
+    /**
+     * Get a player record by BM ID within a guild.
+     */
+    getPlayerByBmId(bmId, guildId) {
+        try {
+            return this.db.prepare(
+                `SELECT bm_id, name FROM players WHERE bm_id = ? AND guild_id = ? LIMIT 1`
+            ).get(bmId, guildId);
+        } catch (error) {
+            console.error('Error getting player by BM ID:', error);
+            return null;
+        }
+    }
+
+    /**
+     * Get all activity events for a player across all servers in a guild, oldest first.
+     * Includes a look-behind 'online' event for sessions that started before the cutoff.
+     */
+    getAllPlayerEventsAllServers(bmId, guildId, cutoffMs) {
+        try {
+            const players = this.db.prepare(
+                `SELECT id FROM players WHERE bm_id = ? AND guild_id = ?`
+            ).all(bmId, guildId);
+
+            if (!players.length) return [];
+
+            const ids = players.map(p => p.id);
+            const ph = ids.map(() => '?').join(',');
+
+            const events = this.db.prepare(`
+                SELECT event_type, timestamp
+                FROM activity_events
+                WHERE player_id IN (${ph}) AND timestamp >= ?
+                ORDER BY timestamp ASC
+            `).all(...ids, cutoffMs);
+
+            const last = this.db.prepare(`
+                SELECT event_type, timestamp
+                FROM activity_events
+                WHERE player_id IN (${ph}) AND event_type = 'online' AND timestamp < ?
+                ORDER BY timestamp DESC
+                LIMIT 1
+            `).get(...ids, cutoffMs);
+
+            return last ? [last, ...events] : events;
+        } catch (error) {
+            console.error('Error getting all player events across servers:', error);
+            return [];
+        }
+    }
+
     /**
      * Close the database connection
      */

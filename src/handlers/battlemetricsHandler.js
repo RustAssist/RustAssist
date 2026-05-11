@@ -372,28 +372,30 @@ module.exports = {
             }
 
             if(bmInstance.logoutPlayers.length !== 0) {
+                const serverId = `${bmInstance.server_ip}-${bmInstance.server_port}`;
                 for (const playerId of bmInstance.logoutPlayers) {
                     // Record logout in database for battlemetrics
                     const player = bmInstance.players[playerId];
                     if (playerId) {
-                        PlayerActivityDB.recordLogout(playerId, player.name, rustplus.serverId, guildId);
+                        PlayerActivityDB.recordLogout(playerId, player.name, serverId, guildId);
                     }
                 }
             }
 
             if(bmInstance.loginPlayers.length !== 0 || bmInstance.newPlayers.length !== 0) {
+                const serverId = `${bmInstance.server_ip}-${bmInstance.server_port}`;
                 for (const playerId of bmInstance.loginPlayers) {
                     // Record logout in database for battlemetrics
                     const player = bmInstance.players[playerId];
                     if (playerId) {
-                        PlayerActivityDB.recordLogin(playerId, player.name, rustplus.serverId, guildId);
+                        PlayerActivityDB.recordLogin(playerId, player.name, serverId, guildId);
                     }
                 }
                 for (const playerId of bmInstance.newPlayers) {
                     // Record logout in database for battlemetrics
                     const player = bmInstance.players[playerId];
                     if (playerId) {
-                        PlayerActivityDB.recordLogin(playerId, player.name, rustplus.serverId, guildId);
+                        PlayerActivityDB.recordLogin(playerId, player.name, serverId, guildId);
                     }
                 }
             }

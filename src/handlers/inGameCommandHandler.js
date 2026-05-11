@@ -165,6 +165,12 @@ module.exports = {
             commandLowerCase.startsWith(`${prefix}${client.intlGet(guildId, 'commandSyntaxStack')}`)) {
             rustplus.sendInGameMessage(await rustplus.getCommandStack(command));
         }
+        else if (commandLowerCase === `${prefix}${client.intlGet('en', 'commandSyntaxStorage')}` ||
+            commandLowerCase === `${prefix}${client.intlGet(guildId, 'commandSyntaxStorage')}` ||
+            commandLowerCase.startsWith(`${prefix}${client.intlGet('en', 'commandSyntaxStorage')} `) ||
+            commandLowerCase.startsWith(`${prefix}${client.intlGet(guildId, 'commandSyntaxStorage')} `)) {
+            rustplus.sendInGameMessage(rustplus.getCommandStorage(command));
+        }
         else if (commandLowerCase.startsWith(`${prefix}${client.intlGet('en', 'commandSyntaxSteamid')}`) ||
             commandLowerCase.startsWith(`${prefix}${client.intlGet(guildId, 'commandSyntaxSteamid')}`)) {
             rustplus.sendInGameMessage(await rustplus.getCommandSteamId(command, callerSteamId, callerName));

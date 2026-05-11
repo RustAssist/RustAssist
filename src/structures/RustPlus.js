@@ -59,6 +59,7 @@ class RustPlus extends RustPlusLib {
         this.isDeleted = false;             /* Is the rustplus instance deleted? */
         this.isNewConnection = false;       /* Is it an actively selected connection (pressed CONNECT button)? */
         this.isFirstPoll = true;            /* Is this the first poll since connection started? */
+        this.consecutiveTimeouts = 0;      /* Count of consecutive polling timeouts; triggers reconnect. */
 
         /* Interval ids */
         this.pollingTaskId = 0;             /* The id of the main polling mechanism of the rustplus instance. */
@@ -2114,7 +2115,7 @@ class RustPlus extends RustPlusLib {
             return Client.client.intlGet(this.guildId, 'noNameHistoryData', { name: currentName });
         }
 
-        let response = `${Client.client.intlGet(this.guildId, 'whoisTitle').replace('{name}', currentName)}\n`;
+        let response = `${Client.client.intlGet(this.guildId, 'whoisTitle', { name: currentName })}\n`;
         response += `${Client.client.intlGet(this.guildId, 'whoisNameHistory')}:\n`;
         for (const entry of nameHistory) {
             const date = new Date(entry.first_seen).toISOString().slice(0, 10);
@@ -2809,6 +2810,73 @@ class RustPlus extends RustPlusLib {
         return Client.client.intlGet(this.guildId, 'inGameBotMessagesUnmuted');
     }
 
+    getCommandStorage(command) {
+        const instance = Client.client.getInstance(this.guildId);
+        const prefix = this.generalSettings.prefix;
+        const commandStorage = `${prefix}${Client.client.intlGet(this.guildId, 'commandSyntaxStorage')}`;
+        const commandStorageEn = `${prefix}${Client.client.intlGet('en', 'commandSyntaxStorage')}`;
+
+        const storageMonitors = instance.serverList[this.serverId].storageMonitors;
+        const monitors = Object.entries(storageMonitors).filter(([, v]) => v.type !== 'toolCupboard');
+
+        /* No argument — list all non-TC monitors with item counts */
+        if (command.toLowerCase() === commandStorage || command.toLowerCase() === commandStorageEn) {
+            if (monitors.length === 0) {
+                return Client.client.intlGet(this.guildId, 'noStorageMonitorsFound');
+            }
+
+            const strings = [];
+            for (const [entityId, monitor] of monitors) {
+                const live = this.storageMonitors[entityId];
+                if (!live || live.capacity === 0) {
+                    strings.push(`${monitor.name}: ${Client.client.intlGet(this.guildId, 'disconnected')}`);
+                    continue;
+                }
+                strings.push(`${monitor.name}: ${live.items.length}/${live.capacity}`);
+            }
+            return strings;
+        }
+
+        /* `!storage <name>` — show contents of a specific monitor */
+        let name;
+        if (command.toLowerCase().startsWith(`${commandStorage} `)) {
+            name = command.slice(`${commandStorage} `.length).trim();
+        }
+        else {
+            name = command.slice(`${commandStorageEn} `.length).trim();
+        }
+
+        const match = monitors.find(([, v]) => v.name.toLowerCase().includes(name.toLowerCase()));
+        if (!match) {
+            return Client.client.intlGet(this.guildId, 'noStorageMonitorWithName', { name: name });
+        }
+
+        const [entityId, monitor] = match;
+        const live = this.storageMonitors[entityId];
+
+        if (!live || live.capacity === 0) {
+            return `${monitor.name}: ${Client.client.intlGet(this.guildId, 'disconnected')}`;
+        }
+
+        if (live.items.length === 0) {
+            return `${monitor.name}: ${Client.client.intlGet(this.guildId, 'storageMonitorEmpty')}`;
+        }
+
+        /* Aggregate stacks of the same item */
+        const totals = new globalThis.Map();
+        for (const item of live.items) {
+            const id = item.itemId.toString();
+            totals.set(id, (totals.get(id) || 0) + item.quantity);
+        }
+
+        let str = `${monitor.name}: `;
+        for (const [id, qty] of totals) {
+            const itemName = Client.client.items.getName(id) || `id:${id}`;
+            str += `${itemName} x${qty}, `;
+        }
+        return str.slice(0, -2);
+    }
+
     getCommandUpkeep() {
         const instance = Client.client.getInstance(this.guildId);
         let cupboardFound = false;
@@ -2921,14 +2989,21 @@ class RustPlus extends RustPlusLib {
         }
 
         const durability = Durability.getDurabilityData(command, null, Client.client, this.guildId);
-        let raidCosts = `${durability[1]}: `;
 
-        if(!durability) {
+        if (!durability) {
             return Client.client.intlGet(this.guildId, 'noItemWithNameFound', {
                 name: command
             });
         }
-    
+
+        if (!durability[3].explosive) {
+            return Client.client.intlGet(this.guildId, 'noExplosiveDurabilityData', {
+                name: durability[1]
+            });
+        }
+
+        let raidCosts = `${durability[1]}: `;
+
         const sortedItems = Object.values(durability[3].explosive).sort((a, b) => {
             const sulfurA = a[0].sulfur === null ? Infinity : Number(a[0].sulfur);
             const sulfurB = b[0].sulfur === null ? Infinity : Number(b[0].sulfur);
