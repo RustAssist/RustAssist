@@ -2107,10 +2107,9 @@ class RustPlus extends RustPlusLib {
 
         const playerId = matchingPlayers[0];
         const player = bmInstance.players[playerId];
-        const steamId = player.steamId || playerId;
         const currentName = player.name;
 
-        const nameHistory = PlayerActivityDB.getNameHistory(steamId, this.serverId, this.guildId);
+        const nameHistory = PlayerActivityDB.getNameHistoryByBmId(playerId, this.guildId);
 
         if (!nameHistory || nameHistory.length === 0) {
             return Client.client.intlGet(this.guildId, 'noNameHistoryData', { name: currentName });
