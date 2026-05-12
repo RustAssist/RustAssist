@@ -159,6 +159,7 @@ class RustPlus extends RustPlusLib {
         }
 
         const instance = Client.client.getInstance(this.guildId);
+        if (this.team === null) return;
         const leader = this.team.leaderSteamId;
         if (leader === this.playerId) return;
         if (!(leader in instance.serverListLite[this.serverId])) return;
@@ -2828,11 +2829,12 @@ class RustPlus extends RustPlusLib {
             const strings = [];
             for (const [entityId, monitor] of monitors) {
                 const live = this.storageMonitors[entityId];
+                const grid = monitor.location ? ` [${monitor.location}]` : '';
                 if (!live || live.capacity === 0) {
-                    strings.push(`${monitor.name}: ${Client.client.intlGet(this.guildId, 'disconnected')}`);
+                    strings.push(`${monitor.name}${grid}: ${Client.client.intlGet(this.guildId, 'disconnected')}`);
                     continue;
                 }
-                strings.push(`${monitor.name}: ${live.items.length}/${live.capacity}`);
+                strings.push(`${monitor.name}${grid}: ${live.items.length}/${live.capacity}`);
             }
             return strings;
         }
@@ -2853,13 +2855,14 @@ class RustPlus extends RustPlusLib {
 
         const [entityId, monitor] = match;
         const live = this.storageMonitors[entityId];
+        const grid = monitor.location ? ` [${monitor.location}]` : '';
 
         if (!live || live.capacity === 0) {
-            return `${monitor.name}: ${Client.client.intlGet(this.guildId, 'disconnected')}`;
+            return `${monitor.name}${grid}: ${Client.client.intlGet(this.guildId, 'disconnected')}`;
         }
 
         if (live.items.length === 0) {
-            return `${monitor.name}: ${Client.client.intlGet(this.guildId, 'storageMonitorEmpty')}`;
+            return `${monitor.name}${grid}: ${Client.client.intlGet(this.guildId, 'storageMonitorEmpty')}`;
         }
 
         /* Aggregate stacks of the same item */
@@ -2869,7 +2872,7 @@ class RustPlus extends RustPlusLib {
             totals.set(id, (totals.get(id) || 0) + item.quantity);
         }
 
-        let str = `${monitor.name}: `;
+        let str = `${monitor.name}${grid}: `;
         for (const [id, qty] of totals) {
             const itemName = Client.client.items.getName(id) || `id:${id}`;
             str += `${itemName} x${qty}, `;

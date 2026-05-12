@@ -402,12 +402,14 @@ async function pairingEntityStorageMonitor(client, guild, title, message, body) 
             instance.serverList[serverId].storageMonitors[body.entityId].reachable = false;
         }
 
-        const teamInfo = await rustplus.getTeamInfoAsync();
-        if (await rustplus.isResponseValid(teamInfo)) {
-            const player = teamInfo.teamInfo.members.find(e => e.steamId.toString() === rustplus.playerId);
-            if (player) {
-                const location = Map.getPos(player.x, player.y, rustplus.info.correctedMapSize, rustplus);
-                instance.serverList[serverId].storageMonitors[body.entityId].location = location.location;
+        if (!instance.serverList[serverId].storageMonitors[body.entityId].location) {
+            const teamInfo = await rustplus.getTeamInfoAsync();
+            if (await rustplus.isResponseValid(teamInfo)) {
+                const player = teamInfo.teamInfo.members.find(e => e.steamId.toString() === rustplus.playerId);
+                if (player) {
+                    const location = Map.getPos(player.x, player.y, rustplus.info.correctedMapSize, rustplus);
+                    instance.serverList[serverId].storageMonitors[body.entityId].location = location.location;
+                }
             }
         }
 

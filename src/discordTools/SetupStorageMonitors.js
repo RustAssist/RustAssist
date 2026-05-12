@@ -36,10 +36,17 @@ module.exports = async (client, rustplus) => {
         const info = await rustplus.getEntityInfoAsync(entityId);
 
         if (!(await rustplus.isResponseValid(info))) {
-            if (entity.reachable === true) {
-                await DiscordMessages.sendStorageMonitorNotFoundMessage(guildId, serverId, entityId);
+            /* Only notify and mark unreachable on an explicit new connection.
+               During auto-reconnects (e.g. server restart / network blip) the
+               entity is likely still present – leave the state as-is and let
+               the periodic polling handler detect genuine removals once the
+               connection is stable. */
+            if (rustplus.isNewConnection) {
+                if (entity.reachable === true) {
+                    await DiscordMessages.sendStorageMonitorNotFoundMessage(guildId, serverId, entityId);
+                }
+                entity.reachable = false;
             }
-            entity.reachable = false;
         }
         else {
             entity.reachable = true;
