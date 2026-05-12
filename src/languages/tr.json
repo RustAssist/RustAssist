@@ -777,6 +777,7 @@
     "value": "Değer",
     "vendingMachine": "Market",
     "vendingMachineDetectedSetting": "Yeni market açıldığında bildirim gönder.",
+    "raidableBaseClaimedSetting": "When a Raidable Base is claimed, send a notification.",
     "voiceCap": "SES",
     "warningCap": "UYARI",
     "waterTreatmentPlant": "Su Arıtma Tesisi",

@@ -777,6 +777,7 @@
     "value": "Wartość",
     "vendingMachine": "Vending Machine",
     "vendingMachineDetectedSetting": "When a new Vending Machine is detected, send a notification.",
+    "raidableBaseClaimedSetting": "When a Raidable Base is claimed, send a notification.",
     "voiceCap": "GŁOS",
     "warningCap": "WARNING",
     "waterTreatmentPlant": "Water Treatment Plant",

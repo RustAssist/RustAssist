@@ -335,7 +335,20 @@ class MapMarkers {
             let pos = Map.getPos(marker.x, marker.y, mapSize, this.rustplus);
             let vendingMachine = this.getMarkerByTypeXY(this.types.VendingMachine, marker.x, marker.y);
 
+            /* Detect Raidable Base claim: name changed to include "(Claimed)". */
+            if (!this.rustplus.isFirstPoll &&
+                    typeof marker.name === 'string' && marker.name.includes('(Claimed)') &&
+                    !(vendingMachine.name && vendingMachine.name.includes('(Claimed)'))) {
+                this.rustplus.sendEvent(
+                    this.rustplus.notificationSettings.raidableBaseClaimedSetting,
+                    this.client.intlGet(this.rustplus.guildId, 'raidableBaseClaimed',
+                        { location: pos.location }),
+                    null,
+                    Constants.COLOR_RAIDABLE_BASE_CLAIMED);
+            }
+
             vendingMachine.id = marker.id;
+            vendingMachine.name = marker.name;
             vendingMachine.location = pos;
             vendingMachine.sellOrders = marker.sellOrders;
         }

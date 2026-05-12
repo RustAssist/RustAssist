@@ -777,6 +777,7 @@
     "value": "Value",
     "vendingMachine": "Varuautomat",
     "vendingMachineDetectedSetting": "När en ny varuautomat upptäcks, skicka en notifikation.",
+    "raidableBaseClaimedSetting": "When a Raidable Base is claimed, send a notification.",
     "voiceCap": "VOICE",
     "warningCap": "VARNING",
     "waterTreatmentPlant": "Vattenreningsverk",

@@ -287,7 +287,7 @@ class RustPlus extends RustPlusLib {
         if (!firstPoll && setting.discord) {
             await DiscordMessages.sendDiscordEventMessage(this.guildId, this.serverId, text, img, embed_color);
         }
-        if (!firstPoll && setting.inGame) {
+        if (!firstPoll && setting.inGame && this.team !== null && !this.team.allOffline) {
             await this.sendInGameMessage(`${text}`);
         }
         if (!firstPoll && setting.voice) {
