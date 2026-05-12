@@ -60,6 +60,22 @@ module.exports = {
             rustplus.time = new Time(time.time, rustplus, client);
             rustplus.team = new Team(teamInfo.teamInfo, rustplus);
             rustplus.mapMarkers = new MapMarkers(mapMarkers.mapMarkers, rustplus, client);
+
+            /* On auto-reconnect, restore per-player timer state that was stashed
+               before the previous instance was torn down so that AFK/offline times
+               survive network blips and daily server reboots. */
+            if (!rustplus.isNewConnection &&
+                    client.rustplusPlayerStash &&
+                    client.rustplusPlayerStash[rustplus.guildId]) {
+                const stash = client.rustplusPlayerStash[rustplus.guildId];
+                for (const player of rustplus.team.players) {
+                    if (stash[player.steamId]) {
+                        player.lastMovement = stash[player.steamId].lastMovement;
+                        player.wentOfflineTime = stash[player.steamId].wentOfflineTime;
+                    }
+                }
+                delete client.rustplusPlayerStash[rustplus.guildId];
+            }
         }
 
         await module.exports.handlers(rustplus, client, info, mapMarkers, teamInfo, time);

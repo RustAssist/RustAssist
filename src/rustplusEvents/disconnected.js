@@ -68,6 +68,20 @@ module.exports = {
 
             rustplus.log(client.intlGet(null, 'reconnectingCap'), client.intlGet(null, 'reconnectingToServer'));
 
+            /* Stash per-player timer state so it can be restored after reconnect,
+               preventing AFK/offline timers from resetting due to a network blip
+               or daily server reboot. */
+            if (rustplus.team !== null) {
+                if (!client.rustplusPlayerStash) client.rustplusPlayerStash = {};
+                client.rustplusPlayerStash[guildId] = {};
+                for (const player of rustplus.team.players) {
+                    client.rustplusPlayerStash[guildId][player.steamId] = {
+                        lastMovement: player.lastMovement,
+                        wentOfflineTime: player.wentOfflineTime,
+                    };
+                }
+            }
+
             delete client.rustplusInstances[guildId];
 
             if (client.rustplusReconnectTimers[guildId]) {
