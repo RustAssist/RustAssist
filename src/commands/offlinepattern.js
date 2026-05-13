@@ -42,6 +42,16 @@ module.exports = {
 				.addStringOption(option => option
 					.setName('battlemetricsid')
 					.setDescription(client.intlGet(guildId, 'commandsPlayersBattlemetricsIdDesc'))
+					.setRequired(false))
+				.addIntegerOption(option => option
+					.setName('days')
+					.setDescription(client.intlGet(guildId, 'commandsOfflinePatternDaysDesc'))
+					.setMinValue(1)
+					.setMaxValue(365)
+					.setRequired(false))
+				.addStringOption(option => option
+					.setName('timezone')
+					.setDescription(client.intlGet(guildId, 'commandsOfflinePatternTimezoneDesc'))
 					.setRequired(false)))
 			.addSubcommand(subcommand => subcommand
 				.setName('playerid')
@@ -53,6 +63,16 @@ module.exports = {
 				.addStringOption(option => option
 					.setName('battlemetricsid')
 					.setDescription(client.intlGet(guildId, 'commandsPlayersBattlemetricsIdDesc'))
+					.setRequired(false))
+				.addIntegerOption(option => option
+					.setName('days')
+					.setDescription(client.intlGet(guildId, 'commandsOfflinePatternDaysDesc'))
+					.setMinValue(1)
+					.setMaxValue(365)
+					.setRequired(false))
+				.addStringOption(option => option
+					.setName('timezone')
+					.setDescription(client.intlGet(guildId, 'commandsOfflinePatternTimezoneDesc'))
 					.setRequired(false)))
 			.addSubcommand(subcommand => subcommand
 				.setName('group')
@@ -64,6 +84,16 @@ module.exports = {
 				.addStringOption(option => option
 					.setName('battlemetricsid')
 					.setDescription(client.intlGet(guildId, 'commandsPlayersBattlemetricsIdDesc'))
+					.setRequired(false))
+				.addIntegerOption(option => option
+					.setName('days')
+					.setDescription(client.intlGet(guildId, 'commandsOfflinePatternDaysDesc'))
+					.setMinValue(1)
+					.setMaxValue(365)
+					.setRequired(false))
+				.addStringOption(option => option
+					.setName('timezone')
+					.setDescription(client.intlGet(guildId, 'commandsOfflinePatternTimezoneDesc'))
 					.setRequired(false)));
 	},
 
@@ -75,6 +105,8 @@ module.exports = {
 		await interaction.deferReply({ ephemeral: true });
 
 		let battlemetricsId = interaction.options.getString('battlemetricsid');
+		const days = interaction.options.getInteger('days') || 30;
+		const timezone = interaction.options.getString('timezone') || 'America/New_York';
 
 		if (!battlemetricsId) {
 			const rustplus = client.rustplusInstances[interaction.guildId];
@@ -109,15 +141,15 @@ module.exports = {
 
 		switch (interaction.options.getSubcommand()) {
 			case 'player': {
-				await offlinePatternNameHandler(client, interaction, battlemetricsId);
+				await offlinePatternNameHandler(client, interaction, battlemetricsId, days, timezone);
 			} break;
 
 			case 'playerid': {
-				await offlinePatternPlayerIdHandler(client, interaction, battlemetricsId);
+				await offlinePatternPlayerIdHandler(client, interaction, battlemetricsId, days, timezone);
 			} break;
 
 			case 'group': {
-				await offlinePatternGroupHandler(client, interaction, battlemetricsId);
+				await offlinePatternGroupHandler(client, interaction, battlemetricsId, days, timezone);
 			} break;
 
 			default: {
@@ -135,7 +167,7 @@ module.exports = {
 	},
 };
 
-async function offlinePatternNameHandler(client, interaction, battlemetricsId) {
+async function offlinePatternNameHandler(client, interaction, battlemetricsId, days, timezone) {
 	const bmInstance = client.battlemetricsInstances[battlemetricsId];
 	const name = interaction.options.getString('name');
 	const players = bmInstance.getOnlinePlayerIdsOrderedByTime().concat(bmInstance.getOfflinePlayerIdsOrderedByLeastTimeSinceOnline());
@@ -152,14 +184,14 @@ async function offlinePatternNameHandler(client, interaction, battlemetricsId) {
 		return;
 	}
 	else if (foundPlayers.length === 1) {
-		await displayOfflinePattern(client, interaction, battlemetricsId, foundPlayers[0]);
+		await displayOfflinePattern(client, interaction, battlemetricsId, foundPlayers[0], days, timezone);
 	}
 	else {
 		await displayMultiplePlayerMatches(client, interaction, battlemetricsId, foundPlayers, name);
 	}
 }
 
-async function offlinePatternPlayerIdHandler(client, interaction, battlemetricsId) {
+async function offlinePatternPlayerIdHandler(client, interaction, battlemetricsId, days, timezone) {
 	const bmInstance = client.battlemetricsInstances[battlemetricsId];
 	const playerId = interaction.options.getString('playerid');
 
@@ -170,10 +202,10 @@ async function offlinePatternPlayerIdHandler(client, interaction, battlemetricsI
 		return;
 	}
 
-	await displayOfflinePattern(client, interaction, battlemetricsId, playerId);
+	await displayOfflinePattern(client, interaction, battlemetricsId, playerId, days, timezone);
 }
 
-async function displayOfflinePattern(client, interaction, battlemetricsId, playerId) {
+async function displayOfflinePattern(client, interaction, battlemetricsId, playerId, days, timezone) {
 	const guildId = interaction.guildId;
 	const bmInstance = client.battlemetricsInstances[battlemetricsId];
 	const rustplus = client.rustplusInstances[guildId];
@@ -199,7 +231,7 @@ async function displayOfflinePattern(client, interaction, battlemetricsId, playe
 	const steamId = player.steamId || playerId;
 	
 	// Get the player's offline patterns from the database
-	const offlinePatterns = PlayerActivityDB.analyzeOfflinePatterns(steamId, serverId, guildId);
+	const offlinePatterns = PlayerActivityDB.analyzeOfflinePatterns(steamId, serverId, guildId, days, timezone);
 	
 	if (!offlinePatterns || !offlinePatterns.ranges || offlinePatterns.ranges.length === 0) {
 		const str = client.intlGet(interaction.guildId, 'noOfflinePatternData', { name: userName });
@@ -226,7 +258,7 @@ async function displayOfflinePattern(client, interaction, battlemetricsId, playe
 	description += `__**${client.intlGet(guildId, 'offlinePatternAnalysis')}:**__\n`;
 	const peakHourStr = offlinePatterns.peakHour.toString().padStart(2, '0') + ':00';
 	description += `__**${client.intlGet(guildId, 'mostLikelyOfflineAt')}:**__ **${peakHourStr}**\n`;
-
+	description += `__**${client.intlGet(guildId, 'timezone')}:**__ ${timezone} | ${client.intlGet(guildId, 'days')}: ${days}\n`;
 	const embed = DiscordEmbeds.getEmbed({
 		title: `${client.intlGet(interaction.guildId, 'offlinePatternFor')}: ${userName}`,
 		color: Constants.COLOR_DEFAULT,
@@ -376,7 +408,7 @@ function formatTimeRange(startHour, endHour) {
 	}
 }
 
-async function offlinePatternGroupHandler(client, interaction, battlemetricsId) {
+async function offlinePatternGroupHandler(client, interaction, battlemetricsId, days, timezone) {
 	const guildId = interaction.guildId;
 	const idsString = interaction.options.getString('ids');
 	const bmIds = idsString.split(',').map(id => id.trim()).filter(id => id.length > 0);
@@ -388,10 +420,10 @@ async function offlinePatternGroupHandler(client, interaction, battlemetricsId) 
 		return;
 	}
 
-	await displayGroupOfflinePattern(client, interaction, battlemetricsId, bmIds);
+	await displayGroupOfflinePattern(client, interaction, battlemetricsId, bmIds, days, timezone);
 }
 
-async function displayGroupOfflinePattern(client, interaction, battlemetricsId, bmIds) {
+async function displayGroupOfflinePattern(client, interaction, battlemetricsId, bmIds, days, timezone) {
 	const guildId = interaction.guildId;
 	const bmInstance = client.battlemetricsInstances[battlemetricsId];
 	const rustplus = client.rustplusInstances[guildId];
@@ -404,7 +436,7 @@ async function displayGroupOfflinePattern(client, interaction, battlemetricsId, 
 	}
 
 	const serverId = rustplus.serverId;
-	const result = PlayerActivityDB.analyzeGroupOfflineTime(bmIds, serverId, guildId);
+	const result = PlayerActivityDB.analyzeGroupOfflineTime(bmIds, serverId, guildId, days, timezone);
 
 	if (!result) {
 		const str = client.intlGet(guildId, 'noGroupOfflineData');
@@ -416,6 +448,7 @@ async function displayGroupOfflinePattern(client, interaction, battlemetricsId, 
 	const peakHourStr = result.peakHour.toString().padStart(2, '0') + ':00';
 
 	let description = `__**${client.intlGet(guildId, 'mostLikelyOfflineAt')}:**__ **${peakHourStr}**\n`;
+	description += `__**${client.intlGet(guildId, 'timezone')}:**__ ${timezone} | ${client.intlGet(guildId, 'days')}: ${days}\n`;
 	description += `__**${client.intlGet(guildId, 'groupPlayersAnalyzed')}:**__ ${result.playerCount}/${bmIds.length}\n\n`;
 
 	if (result.players.length > 0) {
@@ -434,7 +467,7 @@ async function displayGroupOfflinePattern(client, interaction, battlemetricsId, 
 	for (let i = 0; i < Math.min(result.ranges.length, 3); i++) {
 		const range = result.ranges[i];
 		const rangeStr = formatTimeRange(range.startHour, range.endHour);
-		const confidencePct = (range.averageEventsPerHour * 100).toFixed(0);
+		const confidencePct = ((range.averageEventsPerHour / result.ranges[0].averageEventsPerHour) * 100).toFixed(0);
 		rangesValue += `**${i + 1}.** ${rangeStr}\n`;
 		rangesValue += `   \u2022 ${client.intlGet(guildId, 'duration')}: ${range.duration} ${client.intlGet(guildId, 'hours')}\n`;
 		rangesValue += `   \u2022 ${client.intlGet(guildId, 'confidence')}: ${confidencePct}%\n\n`;

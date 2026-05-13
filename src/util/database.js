@@ -113,16 +113,6 @@ class PlayerActivityDB {
                 VALUES (?, ?, ?)
             `);
             
-            this.getOfflinePatternStmt = this.db.prepare(`
-                SELECT 
-                    strftime('%H', datetime(timestamp/1000, 'unixepoch', 'localtime')) AS hour,
-                    COUNT(*) AS count
-                FROM activity_events
-                WHERE player_id = ? AND event_type = 'offline'
-                GROUP BY hour
-                ORDER BY count DESC
-            `);
-            
             this.getPlayerHistoryStmt = this.db.prepare(`
                 SELECT 
                     e.event_type,
@@ -237,13 +227,29 @@ class PlayerActivityDB {
     
     /**
      * Get offline patterns for a player
+     * @param {string} bmId
+     * @param {string} serverId
+     * @param {string} guildId
+     * @param {number} [days=30] - how many days of history to include
+     * @param {string} [timezone='America/New_York'] - IANA timezone name
      */
-    getOfflinePatterns(bmId, serverId, guildId) {
+    getOfflinePatterns(bmId, serverId, guildId, days = 30, timezone = 'America/New_York') {
         try {
             const playerId = this.getPlayerIdStmt.get(bmId, serverId, guildId);
             if (!playerId) return [];
-            
-            return this.getOfflinePatternStmt.all(playerId.id);
+
+            const offset = getUtcOffsetStr(timezone);
+            const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+
+            return this.db.prepare(`
+                SELECT
+                    strftime('%H', datetime(timestamp/1000, 'unixepoch', '${offset}')) AS hour,
+                    COUNT(*) AS count
+                FROM activity_events
+                WHERE player_id = ? AND event_type = 'offline' AND timestamp >= ?
+                GROUP BY hour
+                ORDER BY count DESC
+            `).all(playerId.id, cutoff);
         } catch (error) {
             console.error('Error getting offline patterns:', error);
             return [];
@@ -328,20 +334,27 @@ class PlayerActivityDB {
     
     /**
      * Analyze when a player is most likely to be offline.
-     * Returns { ranges, peakHour } where ranges are sorted by density (best first).
+     * Computes actual online time per hour from sessions, then identifies
+     * hours with below-average online time as the offline windows.
+     * Returns { ranges, peakHour } where peakHour is the hour with the
+     * least online time (best raid hour).
      */
-    analyzeOfflinePatterns(bmId, serverId, guildId) {
+    analyzeOfflinePatterns(bmId, serverId, guildId, days = 30, timezone = 'America/New_York') {
         try {
-            const patterns = this.getOfflinePatterns(bmId, serverId, guildId);
-            if (!patterns || patterns.length === 0) return null;
+            const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+            const events = this.getAllPlayerEvents(bmId, serverId, guildId, cutoff);
+            if (!events.length) return null;
 
-            const hourCounts = Array(24).fill(0);
-            patterns.forEach(p => {
-                hourCounts[parseInt(p.hour)] = p.count;
-            });
+            const tzOffsetMs = parseOffsetToMs(getUtcOffsetStr(timezone));
+            const onlineMinutes = computeOnlineMinutesPerHour(events, tzOffsetMs);
+            if (onlineMinutes.every(m => m === 0)) return null;
 
-            const peakHour = hourCounts.indexOf(Math.max(...hourCounts));
-            const ranges = buildTimeRanges(hourCounts);
+            const mean = onlineMinutes.reduce((a, b) => a + b, 0) / 24;
+            // Hours with below-mean online time are offline windows;
+            // score proportional to how far below the mean they are.
+            const offlineScores = onlineMinutes.map(m => Math.max(0, mean - m));
+            const peakHour = onlineMinutes.indexOf(Math.min(...onlineMinutes));
+            const ranges = buildTimeRanges(offlineScores);
             return { ranges, peakHour };
         } catch (error) {
             console.error('Error analyzing offline patterns:', error);
@@ -354,36 +367,26 @@ class PlayerActivityDB {
      * @param {string[]} bmIds - Array of Battlemetrics IDs
      * @param {string} serverId
      * @param {string} guildId
-     * @returns {{ playerCount, players, missingIds, ranges, hourlyScores } | null}
+     * @returns {{ playerCount, players, missingIds, ranges, peakHour } | null}
      */
-    analyzeGroupOfflineTime(bmIds, serverId, guildId) {
+    analyzeGroupOfflineTime(bmIds, serverId, guildId, days = 30, timezone = 'America/New_York') {
         try {
             if (!bmIds || bmIds.length === 0) return null;
 
+            const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+            const tzOffsetMs = parseOffsetToMs(getUtcOffsetStr(timezone));
             const playerData = [];
             const missingIds = [];
 
             for (const bmId of bmIds) {
-                const playerRow = this.getPlayerIdStmt.get(bmId, serverId, guildId);
-                if (!playerRow) {
+                const events = this.getAllPlayerEvents(bmId, serverId, guildId, cutoff);
+                if (!events.length) {
                     missingIds.push(bmId);
                     continue;
                 }
 
-                const patterns = this.getOfflinePatternStmt.all(playerRow.id);
-                if (patterns.length === 0) {
-                    missingIds.push(bmId);
-                    continue;
-                }
-
-                const hourCounts = Array(24).fill(0);
-                let total = 0;
-                patterns.forEach(p => {
-                    hourCounts[parseInt(p.hour)] = p.count;
-                    total += p.count;
-                });
-
-                if (total === 0) {
+                const onlineMinutes = computeOnlineMinutesPerHour(events, tzOffsetMs);
+                if (onlineMinutes.every(m => m === 0)) {
                     missingIds.push(bmId);
                     continue;
                 }
@@ -392,31 +395,30 @@ class PlayerActivityDB {
                 playerData.push({
                     bmId,
                     name: playerInfo ? playerInfo.name : bmId,
-                    probs: hourCounts.map(c => c / total)
+                    onlineMinutes
                 });
             }
 
             if (playerData.length === 0) return null;
 
-            // Average offline probability per hour across all players
-            const hourlyScores = Array(24).fill(0);
+            // Use the MAX online minutes per hour across all players.
+            // This is the "bottleneck" metric: the best raid hour is when
+            // even the most-active player is at their least active.
+            const maxOnlineMinutes = Array(24).fill(0);
             for (let h = 0; h < 24; h++) {
-                let sum = 0;
-                for (const pd of playerData) {
-                    sum += pd.probs[h];
-                }
-                hourlyScores[h] = sum / playerData.length;
+                maxOnlineMinutes[h] = Math.max(...playerData.map(pd => pd.onlineMinutes[h]));
             }
 
-            const peakHour = hourlyScores.indexOf(Math.max(...hourlyScores));
-            const ranges = buildTimeRanges(hourlyScores);
+            const mean = maxOnlineMinutes.reduce((a, b) => a + b, 0) / 24;
+            const offlineScores = maxOnlineMinutes.map(m => Math.max(0, mean - m));
+            const peakHour = maxOnlineMinutes.indexOf(Math.min(...maxOnlineMinutes));
+            const ranges = buildTimeRanges(offlineScores);
 
             return {
                 playerCount: playerData.length,
                 players: playerData.map(pd => pd.name),
                 missingIds,
                 ranges,
-                hourlyScores,
                 peakHour
             };
         } catch (error) {
@@ -546,18 +548,108 @@ class PlayerActivityDB {
 }
 
 /**
+ * Parse a UTC offset string (e.g. '-04:00', '+05:30') to milliseconds.
+ */
+function parseOffsetToMs(offsetStr) {
+    const match = offsetStr.match(/^([+-])(\d{2}):(\d{2})$/);
+    if (!match) return 0;
+    const sign = match[1] === '+' ? 1 : -1;
+    return sign * (parseInt(match[2]) * 60 + parseInt(match[3])) * 60000;
+}
+
+/**
+ * Compute total online minutes per hour-of-day from a sorted list of events.
+ * Each login→logout pair forms a session whose duration is distributed across
+ * the local hours it spans.
+ * @param {Array<{event_type: string, timestamp: number}>} events - sorted ascending
+ * @param {number} tzOffsetMs - timezone offset in ms (from parseOffsetToMs)
+ * @returns {number[]} 24-element array of online minutes indexed by local hour
+ */
+function computeOnlineMinutesPerHour(events, tzOffsetMs) {
+    const onlineMinutes = Array(24).fill(0);
+    let sessionStart = null;
+
+    for (const event of events) {
+        if (event.event_type === 'online') {
+            sessionStart = event.timestamp;
+        } else if (event.event_type === 'offline' && sessionStart !== null) {
+            distributeSession(sessionStart, event.timestamp, onlineMinutes, tzOffsetMs);
+            sessionStart = null;
+        }
+    }
+    // Player is still online — count up to now
+    if (sessionStart !== null) {
+        distributeSession(sessionStart, Date.now(), onlineMinutes, tzOffsetMs);
+    }
+
+    return onlineMinutes;
+}
+
+/**
+ * Distribute the online time of a single session across the 24-hour buckets.
+ */
+function distributeSession(startMs, endMs, onlineMinutes, tzOffsetMs) {
+    let cur = startMs + tzOffsetMs;
+    const end = endMs + tzOffsetMs;
+    while (cur < end) {
+        const slot = Math.floor(cur / 3600000) % 24;
+        const nextHour = (Math.floor(cur / 3600000) + 1) * 3600000;
+        const chunkEnd = Math.min(end, nextHour);
+        onlineMinutes[(slot + 24) % 24] += (chunkEnd - cur) / 60000;
+        cur = chunkEnd;
+    }
+}
+
+/**
+ * Convert an IANA timezone name to a SQLite-compatible UTC offset string (e.g. '-04:00').
+ * Falls back to '-05:00' (Eastern Standard Time) on any error.
+ * @param {string} timezone - IANA timezone identifier
+ * @returns {string} offset like '+05:30' or '-04:00'
+ */
+function getUtcOffsetStr(timezone) {
+    try {
+        const now = new Date();
+        const parts = new Intl.DateTimeFormat('en-US', {
+            timeZone: timezone,
+            timeZoneName: 'longOffset'
+        }).formatToParts(now);
+        const tzName = parts.find(p => p.type === 'timeZoneName');
+        if (tzName) {
+            const match = tzName.value.match(/GMT([+-])(\d{1,2})(?::(\d{2}))?/);
+            if (match) {
+                const sign = match[1];
+                const h = match[2].padStart(2, '0');
+                const m = match[3] || '00';
+                return `${sign}${h}:${m}`;
+            }
+            // GMT+0 case
+            if (tzName.value === 'GMT') return '+00:00';
+        }
+        return '-05:00';
+    } catch (e) {
+        return '-05:00';
+    }
+}
+
+/**
  * Build sorted time ranges from a 24-element array of hourly scores.
+ * Only includes hours whose score is at least `thresholdFraction` of the
+ * maximum score, so shallow below-mean hours don't bloat the window.
  * Handles midnight wrap-around (hours 23 and 0 treated as adjacent).
  * Returns ranges sorted by average score per hour, highest first.
  * @param {number[]} hourScores - 24-element array indexed by hour (0-23)
+ * @param {number} [thresholdFraction=0.33] - fraction of max score required to qualify
  */
-function buildTimeRanges(hourScores) {
+function buildTimeRanges(hourScores, thresholdFraction = 0.33) {
+    const maxScore = Math.max(...hourScores);
+    const threshold = maxScore * thresholdFraction;
+
     const ranges = [];
     let currentRange = null;
 
     for (let i = 0; i < 24; i++) {
         const score = hourScores[i];
-        if (score > 0) {
+        if (score >= threshold && score > 0) {
             if (!currentRange) {
                 currentRange = { start: i, end: i, totalScore: score };
             } else {
