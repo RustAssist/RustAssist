@@ -53,6 +53,17 @@ module.exports = {
 				.addStringOption(option => option
 					.setName('battlemetricsid')
 					.setDescription(client.intlGet(guildId, 'commandsPlayersBattlemetricsIdDesc'))
+					.setRequired(false)))
+			.addSubcommand(subcommand => subcommand
+				.setName('group')
+				.setDescription(client.intlGet(guildId, 'commandsOfflinePatternGroupDesc'))
+				.addStringOption(option => option
+					.setName('ids')
+					.setDescription(client.intlGet(guildId, 'commandsOfflinePatternGroupIdsDesc'))
+					.setRequired(true))
+				.addStringOption(option => option
+					.setName('battlemetricsid')
+					.setDescription(client.intlGet(guildId, 'commandsPlayersBattlemetricsIdDesc'))
 					.setRequired(false)));
 	},
 
@@ -105,6 +116,10 @@ module.exports = {
 				await offlinePatternPlayerIdHandler(client, interaction, battlemetricsId);
 			} break;
 
+			case 'group': {
+				await offlinePatternGroupHandler(client, interaction, battlemetricsId);
+			} break;
+
 			default: {
 			} break;
 		}
@@ -114,6 +129,7 @@ module.exports = {
 			value: `${interaction.options.getSubcommand()} ` +
 				`${interaction.options.getString('name')} ` +
 				`${interaction.options.getString('playerid')} ` +
+				`${interaction.options.getString('ids')} ` +
 				`${interaction.options.getString('battlemetricsid')} `
 		}));
 	},
@@ -185,7 +201,7 @@ async function displayOfflinePattern(client, interaction, battlemetricsId, playe
 	// Get the player's offline patterns from the database
 	const offlinePatterns = PlayerActivityDB.analyzeOfflinePatterns(steamId, serverId, guildId);
 	
-	if (!offlinePatterns || offlinePatterns.length === 0) {
+	if (!offlinePatterns || !offlinePatterns.ranges || offlinePatterns.ranges.length === 0) {
 		const str = client.intlGet(interaction.guildId, 'noOfflinePatternData', { name: userName });
 		await client.interactionEditReply(interaction, DiscordEmbeds.getActionInfoEmbed(1, str));
 		client.log(client.intlGet(null, 'warningCap'), str);
@@ -208,7 +224,9 @@ async function displayOfflinePattern(client, interaction, battlemetricsId, playe
 	description += `__**${client.intlGet(guildId, 'status')}:**__ ${status}\n`;
 	description += `__**${onOffString}:**__ ${time !== null ? `[${time[1]}]` : ''}\n\n`;
 	description += `__**${client.intlGet(guildId, 'offlinePatternAnalysis')}:**__\n`;
-	
+	const peakHourStr = offlinePatterns.peakHour.toString().padStart(2, '0') + ':00';
+	description += `__**${client.intlGet(guildId, 'mostLikelyOfflineAt')}:**__ **${peakHourStr}**\n`;
+
 	const embed = DiscordEmbeds.getEmbed({
 		title: `${client.intlGet(interaction.guildId, 'offlinePatternFor')}: ${userName}`,
 		color: Constants.COLOR_DEFAULT,
@@ -220,10 +238,10 @@ async function displayOfflinePattern(client, interaction, battlemetricsId, playe
 	let patternFieldValue = '';
 	let historyFieldValue = '';
 	
-	for (let i = 0; i < Math.min(offlinePatterns.length, 3); i++) {
-		const pattern = offlinePatterns[i];
+	for (let i = 0; i < Math.min(offlinePatterns.ranges.length, 3); i++) {
+		const pattern = offlinePatterns.ranges[i];
 		const rangeStr = formatTimeRange(pattern.startHour, pattern.endHour);
-		const confidencePercent = ((pattern.averageEventsPerHour / offlinePatterns[0].averageEventsPerHour) * 100).toFixed(0);
+		const confidencePercent = ((pattern.averageEventsPerHour / offlinePatterns.ranges[0].averageEventsPerHour) * 100).toFixed(0);
 		
 		patternFieldValue += `**${i+1}.** ${rangeStr}\n`;
 		patternFieldValue += `   • ${client.intlGet(guildId, 'duration')}: ${pattern.duration} ${client.intlGet(guildId, 'hours')}\n`;
@@ -349,11 +367,90 @@ function formatTimeRange(startHour, endHour) {
 	const formatHour = (hour) => {
 		return hour.toString().padStart(2, '0') + ':00';
 	};
-	
+
 	if (startHour <= endHour) {
 		return `${formatHour(startHour)} - ${formatHour(endHour)}`;
 	} else {
-		// Handle ranges that span across midnight
-		return `${formatHour(startHour)} - ${formatHour(endHour)} ${Constants.MIDNIGHT_EMOJI}`;
+		// Range spans across midnight
+		return `${formatHour(startHour)} - ${formatHour(endHour)} \uD83C\uDF19`;
 	}
+}
+
+async function offlinePatternGroupHandler(client, interaction, battlemetricsId) {
+	const guildId = interaction.guildId;
+	const idsString = interaction.options.getString('ids');
+	const bmIds = idsString.split(',').map(id => id.trim()).filter(id => id.length > 0);
+
+	if (bmIds.length === 0) {
+		const str = client.intlGet(guildId, 'noGroupOfflineData');
+		await client.interactionEditReply(interaction, DiscordEmbeds.getActionInfoEmbed(1, str));
+		client.log(client.intlGet(null, 'warningCap'), str);
+		return;
+	}
+
+	await displayGroupOfflinePattern(client, interaction, battlemetricsId, bmIds);
+}
+
+async function displayGroupOfflinePattern(client, interaction, battlemetricsId, bmIds) {
+	const guildId = interaction.guildId;
+	const bmInstance = client.battlemetricsInstances[battlemetricsId];
+	const rustplus = client.rustplusInstances[guildId];
+
+	if (!rustplus) {
+		const str = client.intlGet(guildId, 'notConnectedToRustServer');
+		await client.interactionEditReply(interaction, DiscordEmbeds.getActionInfoEmbed(1, str));
+		client.log(client.intlGet(null, 'warningCap'), str);
+		return;
+	}
+
+	const serverId = rustplus.serverId;
+	const result = PlayerActivityDB.analyzeGroupOfflineTime(bmIds, serverId, guildId);
+
+	if (!result) {
+		const str = client.intlGet(guildId, 'noGroupOfflineData');
+		await client.interactionEditReply(interaction, DiscordEmbeds.getActionInfoEmbed(1, str));
+		client.log(client.intlGet(null, 'warningCap'), str);
+		return;
+	}
+
+	const peakHourStr = result.peakHour.toString().padStart(2, '0') + ':00';
+
+	let description = `__**${client.intlGet(guildId, 'mostLikelyOfflineAt')}:**__ **${peakHourStr}**\n`;
+	description += `__**${client.intlGet(guildId, 'groupPlayersAnalyzed')}:**__ ${result.playerCount}/${bmIds.length}\n\n`;
+
+	if (result.players.length > 0) {
+		const playerList = result.players.join(', ');
+		description += `**Players:** ${playerList}\n`;
+	}
+
+	const embed = DiscordEmbeds.getEmbed({
+		title: client.intlGet(guildId, 'groupOfflinePatternTitle'),
+		color: Constants.COLOR_DEFAULT,
+		description: description,
+		footer: { text: bmInstance.server_name }
+	});
+
+	let rangesValue = '';
+	for (let i = 0; i < Math.min(result.ranges.length, 3); i++) {
+		const range = result.ranges[i];
+		const rangeStr = formatTimeRange(range.startHour, range.endHour);
+		const confidencePct = (range.averageEventsPerHour * 100).toFixed(0);
+		rangesValue += `**${i + 1}.** ${rangeStr}\n`;
+		rangesValue += `   \u2022 ${client.intlGet(guildId, 'duration')}: ${range.duration} ${client.intlGet(guildId, 'hours')}\n`;
+		rangesValue += `   \u2022 ${client.intlGet(guildId, 'confidence')}: ${confidencePct}%\n\n`;
+	}
+
+	if (result.missingIds.length > 0) {
+		rangesValue += `\u26A0\uFE0F ${result.missingIds.length} ID(s) had no data.`;
+	}
+
+	embed.addFields({
+		name: client.intlGet(guildId, 'bestRaidTimes'),
+		value: rangesValue || client.intlGet(guildId, 'notEnoughData'),
+		inline: false
+	});
+
+	await client.interactionEditReply(interaction, { embeds: [embed] });
+	client.log(client.intlGet(guildId, 'infoCap'),
+		client.intlGet(guildId, 'displayingOfflinePatterns'));
 }

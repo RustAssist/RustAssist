@@ -327,64 +327,100 @@ class PlayerActivityDB {
     }
     
     /**
-     * Analyze when a player is most likely to be offline
-     * Returns the best time ranges to raid a player
+     * Analyze when a player is most likely to be offline.
+     * Returns { ranges, peakHour } where ranges are sorted by density (best first).
      */
     analyzeOfflinePatterns(bmId, serverId, guildId) {
         try {
             const patterns = this.getOfflinePatterns(bmId, serverId, guildId);
             if (!patterns || patterns.length === 0) return null;
-            
-            // Group consecutive hours to find time ranges
+
             const hourCounts = Array(24).fill(0);
             patterns.forEach(p => {
                 hourCounts[parseInt(p.hour)] = p.count;
             });
-            
-            // Find contiguous ranges of high offline probability
-            const ranges = [];
-            let currentRange = null;
-            
-            for (let i = 0; i < 24; i++) {
-                const hour = i;
-                const count = hourCounts[i];
-                const nextCount = hourCounts[(i + 1) % 24];
-                
-                // Start a new range or extend the current one
-                if (!currentRange && count > 0) {
-                    currentRange = { start: hour, end: hour, totalEvents: count };
-                } else if (currentRange && nextCount > 0) {
-                    currentRange.end = (i + 1) % 24;
-                    currentRange.totalEvents += nextCount;
-                } else if (currentRange) {
-                    ranges.push(currentRange);
-                    currentRange = null;
-                }
-            }
-            
-            // Close the last range if it spans across midnight
-            if (currentRange) {
-                ranges.push(currentRange);
-            }
-            
-            // Calculate the best raid times based on offline patterns
-            const bestRaidTimes = ranges.map(range => {
-                const duration = range.end >= range.start ? 
-                    range.end - range.start + 1 : 
-                    24 - range.start + range.end + 1;
-                
-                return {
-                    startHour: range.start,
-                    endHour: range.end,
-                    duration: duration,
-                    offlineEvents: range.totalEvents,
-                    averageEventsPerHour: range.totalEvents / duration
-                };
-            }).sort((a, b) => b.averageEventsPerHour - a.averageEventsPerHour);
-            
-            return bestRaidTimes;
+
+            const peakHour = hourCounts.indexOf(Math.max(...hourCounts));
+            const ranges = buildTimeRanges(hourCounts);
+            return { ranges, peakHour };
         } catch (error) {
             console.error('Error analyzing offline patterns:', error);
+            return null;
+        }
+    }
+
+    /**
+     * Find when a group of players are most likely to be offline simultaneously.
+     * @param {string[]} bmIds - Array of Battlemetrics IDs
+     * @param {string} serverId
+     * @param {string} guildId
+     * @returns {{ playerCount, players, missingIds, ranges, hourlyScores } | null}
+     */
+    analyzeGroupOfflineTime(bmIds, serverId, guildId) {
+        try {
+            if (!bmIds || bmIds.length === 0) return null;
+
+            const playerData = [];
+            const missingIds = [];
+
+            for (const bmId of bmIds) {
+                const playerRow = this.getPlayerIdStmt.get(bmId, serverId, guildId);
+                if (!playerRow) {
+                    missingIds.push(bmId);
+                    continue;
+                }
+
+                const patterns = this.getOfflinePatternStmt.all(playerRow.id);
+                if (patterns.length === 0) {
+                    missingIds.push(bmId);
+                    continue;
+                }
+
+                const hourCounts = Array(24).fill(0);
+                let total = 0;
+                patterns.forEach(p => {
+                    hourCounts[parseInt(p.hour)] = p.count;
+                    total += p.count;
+                });
+
+                if (total === 0) {
+                    missingIds.push(bmId);
+                    continue;
+                }
+
+                const playerInfo = this.getPlayerInfoStmt.get(bmId, serverId, guildId);
+                playerData.push({
+                    bmId,
+                    name: playerInfo ? playerInfo.name : bmId,
+                    probs: hourCounts.map(c => c / total)
+                });
+            }
+
+            if (playerData.length === 0) return null;
+
+            // Average offline probability per hour across all players
+            const hourlyScores = Array(24).fill(0);
+            for (let h = 0; h < 24; h++) {
+                let sum = 0;
+                for (const pd of playerData) {
+                    sum += pd.probs[h];
+                }
+                hourlyScores[h] = sum / playerData.length;
+            }
+
+            const peakHour = hourlyScores.indexOf(Math.max(...hourlyScores));
+            const ranges = buildTimeRanges(hourlyScores);
+
+            return {
+                playerCount: playerData.length,
+                players: playerData.map(pd => pd.name),
+                missingIds,
+                ranges,
+                hourlyScores,
+                peakHour
+            };
+        } catch (error) {
+            console.error('Error analyzing group offline time:', error);
             return null;
         }
     }
@@ -507,6 +543,59 @@ class PlayerActivityDB {
             this.db.close();
         }
     }
+}
+
+/**
+ * Build sorted time ranges from a 24-element array of hourly scores.
+ * Handles midnight wrap-around (hours 23 and 0 treated as adjacent).
+ * Returns ranges sorted by average score per hour, highest first.
+ * @param {number[]} hourScores - 24-element array indexed by hour (0-23)
+ */
+function buildTimeRanges(hourScores) {
+    const ranges = [];
+    let currentRange = null;
+
+    for (let i = 0; i < 24; i++) {
+        const score = hourScores[i];
+        if (score > 0) {
+            if (!currentRange) {
+                currentRange = { start: i, end: i, totalScore: score };
+            } else {
+                currentRange.end = i;
+                currentRange.totalScore += score;
+            }
+        } else if (currentRange) {
+            ranges.push(currentRange);
+            currentRange = null;
+        }
+    }
+    if (currentRange) ranges.push(currentRange);
+
+    // Merge first and last ranges if they are adjacent across midnight (23 -> 0)
+    if (ranges.length >= 2 && ranges[0].start === 0 && ranges[ranges.length - 1].end === 23) {
+        const last = ranges.pop();
+        const first = ranges.shift();
+        ranges.unshift({
+            start: last.start,
+            end: first.end,
+            totalScore: last.totalScore + first.totalScore,
+            spansMidnight: true
+        });
+    }
+
+    return ranges.map(range => {
+        const duration = range.spansMidnight
+            ? (24 - range.start) + range.end + 1
+            : range.end - range.start + 1;
+        return {
+            startHour: range.start,
+            endHour: range.end,
+            duration,
+            offlineEvents: range.totalScore,
+            averageEventsPerHour: range.totalScore / duration,
+            spansMidnight: !!range.spansMidnight
+        };
+    }).sort((a, b) => b.averageEventsPerHour - a.averageEventsPerHour);
 }
 
 module.exports = new PlayerActivityDB();
