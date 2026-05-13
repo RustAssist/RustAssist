@@ -487,6 +487,19 @@ class PlayerActivityDB {
     }
 
     /**
+     * Get merged activity events for a group of players (multiple BM IDs) across all servers
+     * in a guild, oldest first. Each player's events are fetched independently (including the
+     * look-behind 'online' event) and returned as a map keyed by bmId.
+     */
+    getGroupEventsAllServers(bmIds, guildId, cutoffMs) {
+        const result = {};
+        for (const bmId of bmIds) {
+            result[bmId] = this.getAllPlayerEventsAllServers(bmId, guildId, cutoffMs);
+        }
+        return result;
+    }
+
+    /**
      * Close the database connection
      */
     close() {

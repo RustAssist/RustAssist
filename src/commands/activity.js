@@ -25,7 +25,7 @@ const { DateTime } = require('luxon');
 const Constants = require('../util/constants.js');
 const DiscordEmbeds = require('../discordTools/discordEmbeds.js');
 const PlayerActivityDB = require('../util/database.js');
-const { analyzeEvents, renderHourlyBarChart, renderHeatmap } = require('../util/activityAnalysis.js');
+const { analyzeEvents, analyzeGroupEvents, renderHourlyBarChart, renderHeatmap } = require('../util/activityAnalysis.js');
 
 const DEFAULT_DAYS = 90;
 const DEFAULT_TZ = 'America/New_York';
@@ -74,6 +74,23 @@ module.exports = {
                 .addStringOption(opt => opt
                     .setName('timezone')
                     .setDescription(client.intlGet(guildId, 'commandsActivityTimezoneDesc'))
+                    .setRequired(false)))
+            .addSubcommand(sub => sub
+                .setName('group')
+                .setDescription(client.intlGet(guildId, 'commandsActivityGroupDesc'))
+                .addStringOption(opt => opt
+                    .setName('playerids')
+                    .setDescription(client.intlGet(guildId, 'commandsActivityGroupPlayerIdsDesc'))
+                    .setRequired(true))
+                .addIntegerOption(opt => opt
+                    .setName('days')
+                    .setDescription(client.intlGet(guildId, 'commandsActivityDaysDesc'))
+                    .setMinValue(1)
+                    .setMaxValue(365)
+                    .setRequired(false))
+                .addStringOption(opt => opt
+                    .setName('timezone')
+                    .setDescription(client.intlGet(guildId, 'commandsActivityTimezoneDesc'))
                     .setRequired(false)));
     },
 
@@ -87,6 +104,7 @@ module.exports = {
         switch (interaction.options.getSubcommand()) {
             case 'player':   await activityNameHandler(client, interaction);   break;
             case 'playerid': await activityPlayerIdHandler(client, interaction); break;
+            case 'group':    await activityGroupHandler(client, interaction);   break;
             default: break;
         }
 
@@ -273,6 +291,120 @@ async function displayMultiplePlayerMatches(client, interaction, players, search
     }
 
     await client.interactionEditReply(interaction, { embeds: [embed] });
+    client.log(client.intlGet(guildId, 'infoCap'),
+        client.intlGet(guildId, 'displayingPlayerSearchResults'));
+}
+
+async function activityGroupHandler(client, interaction) {
+    const guildId = interaction.guildId;
+    const raw = interaction.options.getString('playerids');
+    const bmIds = raw.split(',').map(s => s.trim()).filter(Boolean);
+
+    if (bmIds.length < 2) {
+        const str = client.intlGet(guildId, 'activityGroupNeedsMultipleIds');
+        await client.interactionEditReply(interaction, DiscordEmbeds.getActionInfoEmbed(1, str));
+        return;
+    }
+    if (bmIds.length > 20) {
+        const str = client.intlGet(guildId, 'activityGroupTooManyIds');
+        await client.interactionEditReply(interaction, DiscordEmbeds.getActionInfoEmbed(1, str));
+        return;
+    }
+
+    const days = interaction.options.getInteger('days') ?? DEFAULT_DAYS;
+    const tzInput = interaction.options.getString('timezone') ?? DEFAULT_TZ;
+    const timezone = DateTime.now().setZone(tzInput).isValid ? tzInput : DEFAULT_TZ;
+
+    const cutoffMs = DateTime.now().setZone(timezone).minus({ days }).toMillis();
+
+    // Resolve names and validate that at least some IDs exist in the DB.
+    const resolvedPlayers = [];
+    const unknownIds = [];
+    for (const bmId of bmIds) {
+        const player = PlayerActivityDB.getPlayerByBmId(bmId, guildId);
+        if (player) {
+            resolvedPlayers.push({ bmId, name: player.name });
+        } else {
+            unknownIds.push(bmId);
+        }
+    }
+
+    if (resolvedPlayers.length === 0) {
+        const str = client.intlGet(guildId, 'couldNotFindPlayerId', { id: bmIds[0] });
+        await client.interactionEditReply(interaction, DiscordEmbeds.getActionInfoEmbed(1, str));
+        return;
+    }
+
+    const eventsByBmId = PlayerActivityDB.getGroupEventsAllServers(
+        resolvedPlayers.map(p => p.bmId), guildId, cutoffMs);
+
+    const result = analyzeGroupEvents(eventsByBmId, days, timezone);
+
+    if (!result) {
+        const str = client.intlGet(guildId, 'noActivityData');
+        await client.interactionEditReply(interaction, DiscordEmbeds.getActionInfoEmbed(1, str));
+        return;
+    }
+
+    const { hourMinutes, heat, totalMinutes, top3, best2hStart, best2hTotal } = result;
+    const groupLabel = resolvedPlayers.map(p => p.name).join(', ');
+
+    const [h1, h2, h3] = top3;
+    const fmt = h => `${String(h).padStart(2, '0')}:00-${String(h + 1).padStart(2, '0')}:00`;
+    const totalHours = (totalMinutes / 60).toFixed(1);
+
+    const memberLines = resolvedPlayers
+        .map(p => `[${p.name}](${Constants.BATTLEMETRICS_PROFILE_URL}${p.bmId})`)
+        .join(', ');
+
+    const summaryLines = [
+        `**${client.intlGet(guildId, 'activityTop3Hours')}**`,
+        `1. ${fmt(h1)} — ${hourMinutes[h1].toFixed(0)} min`,
+        `2. ${fmt(h2)} — ${hourMinutes[h2].toFixed(0)} min`,
+        `3. ${fmt(h3)} — ${hourMinutes[h3].toFixed(0)} min`,
+        `**${client.intlGet(guildId, 'activityBest2h')}:** ` +
+            `${String(best2hStart).padStart(2, '0')}:00–${String(best2hStart + 2).padStart(2, '0')}:00` +
+            ` (${best2hTotal.toFixed(0)} min)`,
+        `**${client.intlGet(guildId, 'activityTotalOnline')}:** ${totalHours} hrs over last ${days} days`
+    ].join('\n');
+
+    const descLines = [
+        `__**${client.intlGet(guildId, 'players')}:**__ ${memberLines}`,
+        `__**${client.intlGet(guildId, 'activityWindow')}:**__ Last ${days} days (${timezone})`,
+        ''
+    ];
+    if (unknownIds.length > 0) {
+        descLines.push(`⚠️ ${client.intlGet(guildId, 'activityGroupUnknownIds')}: ${unknownIds.join(', ')}`);
+        descLines.push('');
+    }
+    descLines.push(summaryLines);
+
+    const embed = DiscordEmbeds.getEmbed({
+        title: client.intlGet(guildId, 'activityGroupTitle', { count: resolvedPlayers.length }),
+        color: Constants.COLOR_DEFAULT,
+        description: descLines.join('\n')
+    });
+
+    let barBuf, heatBuf;
+    try {
+        [barBuf, heatBuf] = await Promise.all([
+            renderHourlyBarChart(hourMinutes, groupLabel, days, timezone),
+            renderHeatmap(heat, groupLabel, days, timezone)
+        ]);
+    } catch (err) {
+        client.log(client.intlGet(null, 'errorCap'), `Activity group chart render error: ${err.message}`);
+        await client.interactionEditReply(interaction, { embeds: [embed] });
+        return;
+    }
+
+    const barAttachment = new AttachmentBuilder(barBuf, { name: 'hourly.png' });
+    const heatAttachment = new AttachmentBuilder(heatBuf, { name: 'heatmap.png' });
+
+    await client.interactionEditReply(interaction, {
+        embeds: [embed],
+        files: [barAttachment, heatAttachment]
+    });
+
     client.log(client.intlGet(guildId, 'infoCap'),
         client.intlGet(guildId, 'displayingPlayerSearchResults'));
 }

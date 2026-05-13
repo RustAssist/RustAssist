@@ -295,4 +295,92 @@ async function renderHeatmap(heat, playerName, days, timezone) {
     return buffer;
 }
 
-module.exports = { analyzeEvents, renderHourlyBarChart, renderHeatmap };
+module.exports = { analyzeEvents, analyzeGroupEvents, renderHourlyBarChart, renderHeatmap };
+
+/**
+ * Merge activity events from multiple players into union (non-overlapping) intervals,
+ * then bucket them the same way analyzeEvents does for a single player.
+ *
+ * @param {Object} eventsByBmId  - { [bmId]: [{event_type, timestamp}] }
+ * @param {number} days
+ * @param {string} timezone
+ * @returns {object|null}
+ */
+function analyzeGroupEvents(eventsByBmId, days, timezone) {
+    const cutoff = DateTime.now().setZone(timezone).minus({ days }).toMillis();
+
+    // Step 1: collect all [start, end] intervals across every player.
+    const intervals = [];
+    for (const events of Object.values(eventsByBmId)) {
+        if (!events || events.length === 0) continue;
+
+        let sessionStart = null;
+        for (const row of events) {
+            if (row.event_type === 'online') {
+                sessionStart = row.timestamp;
+            } else if (row.event_type === 'offline' && sessionStart !== null) {
+                const start = Math.max(sessionStart, cutoff);
+                const end = row.timestamp;
+                if (end > start) intervals.push([start, end]);
+                sessionStart = null;
+            }
+        }
+        // Still-open session: treat as lasting until now.
+        if (sessionStart !== null) {
+            const start = Math.max(sessionStart, cutoff);
+            const end = DateTime.now().toMillis();
+            if (end > start) intervals.push([start, end]);
+        }
+    }
+
+    if (intervals.length === 0) return null;
+
+    // Step 2: sort and merge overlapping intervals into a union.
+    intervals.sort((a, b) => a[0] - b[0]);
+    const merged = [intervals[0].slice()];
+    for (let i = 1; i < intervals.length; i++) {
+        const last = merged[merged.length - 1];
+        if (intervals[i][0] <= last[1]) {
+            last[1] = Math.max(last[1], intervals[i][1]);
+        } else {
+            merged.push(intervals[i].slice());
+        }
+    }
+
+    // Step 3: bucket merged intervals into hourMinutes / heat exactly like analyzeEvents.
+    const hourMinutes = new Array(24).fill(0);
+    const heat = Array.from({ length: 7 }, () => new Array(24).fill(0));
+    let totalMinutes = 0;
+
+    for (const [startMs, endMs] of merged) {
+        let current = DateTime.fromMillis(startMs, { zone: timezone });
+        const end = DateTime.fromMillis(endMs, { zone: timezone });
+
+        while (current < end) {
+            const nextHour = current.startOf('hour').plus({ hours: 1 });
+            const segmentEnd = nextHour < end ? nextHour : end;
+            const minutes = segmentEnd.diff(current, 'minutes').minutes;
+
+            hourMinutes[current.hour] += minutes;
+            heat[current.weekday - 1][current.hour] += minutes;
+            totalMinutes += minutes;
+
+            current = segmentEnd;
+        }
+    }
+
+    if (totalMinutes === 0) return null;
+
+    const top3 = Array.from({ length: 24 }, (_, i) => i)
+        .sort((a, b) => hourMinutes[b] - hourMinutes[a])
+        .slice(0, 3);
+
+    let best2hStart = 0;
+    let best2hTotal = hourMinutes[0] + hourMinutes[1];
+    for (let h = 1; h < 23; h++) {
+        const t = hourMinutes[h] + hourMinutes[h + 1];
+        if (t > best2hTotal) { best2hTotal = t; best2hStart = h; }
+    }
+
+    return { hourMinutes, heat, totalMinutes, top3, best2hStart, best2hTotal, timezone, days };
+}
