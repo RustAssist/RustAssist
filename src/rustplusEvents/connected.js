@@ -45,18 +45,28 @@ module.exports = {
             rustplus.log(client.intlGet(null, 'errorCap'),
                 client.intlGet(null, 'somethingWrongWithConnection'), 'error');
 
-            instance.activeServer = null;
-            client.setInstance(guildId, instance);
+            if (map && map.hasOwnProperty('error')) {
+                /* Server explicitly rejected the credentials — user needs to re-pair. */
+                instance.activeServer = null;
+                client.setInstance(guildId, instance);
 
-            await DiscordMessages.sendServerConnectionInvalidMessage(guildId, serverId);
-            await DiscordMessages.sendServerMessage(guildId, serverId, null);
+                await DiscordMessages.sendServerConnectionInvalidMessage(guildId, serverId);
+                await DiscordMessages.sendServerMessage(guildId, serverId, null);
 
-            client.resetRustplusVariables(guildId);
+                client.resetRustplusVariables(guildId);
+            }
+            /* Otherwise it's a transient failure (timeout/network/server restart).
+               Leave rustplusReconnecting=true so the disconnected event keeps retrying
+               without re-sending the "server offline" embed. */
 
             rustplus.disconnect();
             delete client.rustplusInstances[guildId];
             return;
         }
+
+        /* Successful connection — reset the backoff counter. */
+        client.rustplusReconnectAttempts[guildId] = 0;
+
         rustplus.log(client.intlGet(null, 'connectedCap'), client.intlGet(null, 'rustplusOperational'));
 
         const info = await rustplus.getInfoAsync();

@@ -89,9 +89,19 @@ module.exports = {
                 client.rustplusReconnectTimers[guildId] = null;
             }
 
+            const attempts = client.rustplusReconnectAttempts[guildId] || 0;
+            const delay = Math.min(
+                Config.general.reconnectIntervalMs * Math.pow(2, attempts),
+                300000 /* 5 min cap */
+            );
+            client.rustplusReconnectAttempts[guildId] = attempts + 1;
+
+            rustplus.log(client.intlGet(null, 'reconnectingCap'),
+                `Reconnect attempt ${attempts + 1}, waiting ${delay / 1000}s`);
+
             client.rustplusReconnectTimers[guildId] = setTimeout(
                 client.createRustplusInstance.bind(client),
-                Config.general.reconnectIntervalMs,
+                delay,
                 guildId,
                 rustplus.server,
                 rustplus.port,
