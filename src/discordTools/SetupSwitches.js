@@ -51,7 +51,9 @@ module.exports = async (client, rustplus) => {
             entity.reachable = true;
         }
 
-        if (entity.reachable) entity.active = info.entityInfo.payload.value;
+        if (entity.reachable && info && info.entityInfo && info.entityInfo.payload) {
+            entity.active = info.entityInfo.payload.value;
+        }
 
         client.setInstance(guildId, instance);
 

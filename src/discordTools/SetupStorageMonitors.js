@@ -53,7 +53,7 @@ module.exports = async (client, rustplus) => {
         }
         client.setInstance(guildId, instance);
 
-        if (entity.reachable) {
+        if (entity.reachable && info && info.entityInfo && info.entityInfo.payload) {
             rustplus.storageMonitors[entityId] = {
                 items: info.entityInfo.payload.items,
                 expiry: info.entityInfo.payload.protectionExpiry,
