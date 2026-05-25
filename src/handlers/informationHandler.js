@@ -23,6 +23,7 @@ const DiscordMessages = require('../discordTools/discordMessages.js');
 module.exports = {
     handler: async function (rustplus) {
         if (rustplus.informationIntervalCounter === 0) {
+            await DiscordMessages.sendUpdateMapInformationMessage(rustplus);
             await DiscordMessages.sendUpdateServerInformationMessage(rustplus);
             await DiscordMessages.sendUpdateEventInformationMessage(rustplus);
             await DiscordMessages.sendUpdateTeamInformationMessage(rustplus);

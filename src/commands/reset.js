@@ -97,10 +97,19 @@ module.exports = {
 				await DiscordTools.clearTextChannel(guild.id, instance.channelId.switchGroups, 100);
 				await DiscordTools.clearTextChannel(guild.id, instance.channelId.storageMonitors, 100);
 
+				instance.informationMessageId.map = null;
+				instance.informationMessageId.server = null;
+				instance.informationMessageId.event = null;
+				instance.informationMessageId.team = null;
+				client.setInstance(guild.id, instance);
+
 				const rustplus = client.rustplusInstances[guild.id];
 				if (rustplus && rustplus.isOperational) {
 					await rustplus.map.writeMap(false, true);
 					await DiscordMessages.sendUpdateMapInformationMessage(rustplus);
+					await DiscordMessages.sendUpdateServerInformationMessage(rustplus);
+					await DiscordMessages.sendUpdateEventInformationMessage(rustplus);
+					await DiscordMessages.sendUpdateTeamInformationMessage(rustplus);
 				}
 
 				await require('../discordTools/SetupServerList')(client, guild);
@@ -126,10 +135,19 @@ module.exports = {
 			case 'information': {
 				await DiscordTools.clearTextChannel(guild.id, instance.channelId.information, 100);
 
+				instance.informationMessageId.map = null;
+				instance.informationMessageId.server = null;
+				instance.informationMessageId.event = null;
+				instance.informationMessageId.team = null;
+				client.setInstance(guild.id, instance);
+
 				const rustplus = client.rustplusInstances[guild.id];
 				if (rustplus && rustplus.isOperational) {
 					await rustplus.map.writeMap(false, true);
 					await DiscordMessages.sendUpdateMapInformationMessage(rustplus);
+					await DiscordMessages.sendUpdateServerInformationMessage(rustplus);
+					await DiscordMessages.sendUpdateEventInformationMessage(rustplus);
+					await DiscordMessages.sendUpdateTeamInformationMessage(rustplus);
 				}
 
 				client.log(client.intlGet(null, 'infoCap'), client.intlGet(null, 'slashCommandValueChange', {
