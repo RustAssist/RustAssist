@@ -19,6 +19,7 @@
 */
 
 const Fs = require('fs');
+const PlayerActivityDB = require('../util/database');
 const Path = require('path');
 const RustPlusLib = require('@liamcottle/rustplus.js');
 const Translate = require('translate');
@@ -36,6 +37,7 @@ const Languages = require('../util/languages.js');
 const Logger = require('./Logger.js');
 const Map = require('../util/map.js');
 const getRuntimeDataStorage = require('../util/getRuntimeDataStorage');
+const RaidableDB = require('../util/raidableDatabase.js');
 const RustPlusLite = require('../structures/RustPlusLite');
 const TeamHandler = require('../handlers/teamHandler.js');
 const Timer = require('../util/timer.js');
@@ -62,6 +64,7 @@ class RustPlus extends RustPlusLib {
         this.isDeleted = false;             /* Is the rustplus instance deleted? */
         this.isNewConnection = false;       /* Is it an actively selected connection (pressed CONNECT button)? */
         this.isFirstPoll = true;            /* Is this the first poll since connection started? */
+        this.consecutiveTimeouts = 0;      /* Count of consecutive polling timeouts; triggers reconnect. */
 
         /* Interval ids */
         this.pollingTaskId = 0;             /* The id of the main polling mechanism of the rustplus instance. */
@@ -480,6 +483,7 @@ class RustPlus extends RustPlusLib {
         }
 
         const instance = Client.client.getInstance(this.guildId);
+        if (this.team === null) return;
         const leader = this.team.leaderSteamId;
         if (leader === this.playerId) return;
         if (!(leader in instance.serverListLite[this.serverId])) return;
@@ -607,7 +611,7 @@ class RustPlus extends RustPlusLib {
         if (!firstPoll && setting.discord) {
             await DiscordMessages.sendDiscordEventMessage(this.guildId, this.serverId, text, img, embed_color);
         }
-        if (!firstPoll && setting.inGame) {
+        if (!firstPoll && setting.inGame && this.team !== null && !this.team.allOffline) {
             await this.sendInGameMessage(`${text}`);
         }
         if (!firstPoll && setting.voice) {
@@ -2639,6 +2643,165 @@ class RustPlus extends RustPlusLib {
             `${amount}${Client.client.intlGet(this.guildId, 'noOneIsOnline')}`;
     }
 
+    getCommandOfflinePattern(command) {
+        const args = command.trim().split(' ');
+        if (args.length < 2) {
+            return `${Client.client.intlGet(this.guildId, 'usage')}: ${this.generalSettings.prefix}${Client.client.intlGet(this.guildId, 'commandSyntaxOfflinePattern')} <${Client.client.intlGet(this.guildId, 'playerName')}>`;
+        }
+
+        const playerName = args.slice(1).join(' ');
+        const instance = Client.client.getInstance(this.guildId);
+        const server = instance.serverList[this.serverId];
+        
+        if (!server || !server.battlemetricsId) {
+            return Client.client.intlGet(this.guildId, 'invalidBattlemetricsId');
+        }
+        
+        const battlemetricsId = server.battlemetricsId;
+        const bmInstance = Client.client.battlemetricsInstances[battlemetricsId];
+        
+        if (!bmInstance || !bmInstance.lastUpdateSuccessful) {
+            return Client.client.intlGet(this.guildId, 'battlemetricsInstanceCouldNotBeFound', {
+                id: battlemetricsId
+            });
+        }
+        
+        // Find the player by name
+        const players = bmInstance.getOnlinePlayerIdsOrderedByTime()
+            .concat(bmInstance.getOfflinePlayerIdsOrderedByLeastTimeSinceOnline());
+        
+        const matchingPlayers = [];
+        for (const playerId of players) {
+            if (bmInstance.players[playerId]['name'].toLowerCase().includes(playerName.toLowerCase())) {
+                matchingPlayers.push(playerId);
+            }
+        }
+        
+        if (matchingPlayers.length === 0) {
+            return Client.client.intlGet(this.guildId, 'couldNotFindAnyPlayers');
+        }
+        
+        if (matchingPlayers.length > 1) {
+            let response = Client.client.intlGet(this.guildId, 'multiplePlayersFound') + '\\n';
+            for (let i = 0; i < Math.min(matchingPlayers.length, 3); i++) {
+                const playerId = matchingPlayers[i];
+                const playerName = bmInstance.players[playerId]['name'];
+                response += `${i+1}. ${playerName}\\n`;
+            }
+            if (matchingPlayers.length > 3) {
+                response += Client.client.intlGet(this.guildId, 'andMorePlayers', { 
+                    number: matchingPlayers.length - 3 
+                });
+            }
+            return response;
+        }
+        
+        // We have a single match, analyze offline patterns
+        const playerId = matchingPlayers[0];
+        const player = bmInstance.players[playerId];
+        const steamId = player.steamId || playerId;
+        const userName = player.name;
+        
+        // Get the player's offline patterns from the database
+        const offlinePatterns = PlayerActivityDB.analyzeOfflinePatterns(steamId, this.serverId, this.guildId);
+        
+        if (!offlinePatterns || offlinePatterns.length === 0) {
+            return Client.client.intlGet(this.guildId, 'noOfflinePatternData', { name: userName });
+        }
+        
+        // Format the response
+        let response = `${Client.client.intlGet(this.guildId, 'offlinePatternFor')}: ${userName}\\n`;
+        response += `${Client.client.intlGet(this.guildId, 'bestRaidTimes')}:\\n`;
+        
+        for (let i = 0; i < Math.min(offlinePatterns.length, 3); i++) {
+            const pattern = offlinePatterns[i];
+            const startHour = pattern.startHour.toString().padStart(2, '0');
+            const endHour = pattern.endHour.toString().padStart(2, '0');
+            const rangeStr = pattern.startHour <= pattern.endHour ?
+                `${startHour}:00 - ${endHour}:00` :
+                `${startHour}:00 - ${endHour}:00 ⌛`; // Midnight emoji substitute
+            
+            const confidencePercent = ((pattern.averageEventsPerHour / offlinePatterns[0].averageEventsPerHour) * 100).toFixed(0);
+            
+            response += `${i+1}. ${rangeStr}\\n`;
+            response += `   • ${Client.client.intlGet(this.guildId, 'duration')}: ${pattern.duration} ${Client.client.intlGet(this.guildId, 'hours')}\\n`;
+            response += `   • ${Client.client.intlGet(this.guildId, 'confidence')}: ${confidencePercent}%\\n`;
+        }
+        
+        return response;
+    }
+
+    getCommandWhois(command) {
+        const args = command.trim().split(' ');
+        if (args.length < 2) {
+            return `${Client.client.intlGet(this.guildId, 'usage')}: ${this.generalSettings.prefix}${Client.client.intlGet(this.guildId, 'commandSyntaxWhois')} <${Client.client.intlGet(this.guildId, 'playerName')}>`;
+        }
+
+        const playerName = args.slice(1).join(' ');
+        const instance = Client.client.getInstance(this.guildId);
+        const server = instance.serverList[this.serverId];
+
+        if (!server || !server.battlemetricsId) {
+            return Client.client.intlGet(this.guildId, 'invalidBattlemetricsId');
+        }
+
+        const battlemetricsId = server.battlemetricsId;
+        const bmInstance = Client.client.battlemetricsInstances[battlemetricsId];
+
+        if (!bmInstance || !bmInstance.lastUpdateSuccessful) {
+            return Client.client.intlGet(this.guildId, 'battlemetricsInstanceCouldNotBeFound', {
+                id: battlemetricsId
+            });
+        }
+
+        const players = bmInstance.getOnlinePlayerIdsOrderedByTime()
+            .concat(bmInstance.getOfflinePlayerIdsOrderedByLeastTimeSinceOnline());
+
+        const matchingPlayers = [];
+        for (const playerId of players) {
+            if (bmInstance.players[playerId]['name'].toLowerCase().includes(playerName.toLowerCase())) {
+                matchingPlayers.push(playerId);
+            }
+        }
+
+        if (matchingPlayers.length === 0) {
+            return Client.client.intlGet(this.guildId, 'couldNotFindAnyPlayers');
+        }
+
+        if (matchingPlayers.length > 1) {
+            let response = Client.client.intlGet(this.guildId, 'multiplePlayersFound') + '\n';
+            for (let i = 0; i < Math.min(matchingPlayers.length, 3); i++) {
+                const pid = matchingPlayers[i];
+                response += `${i + 1}. ${bmInstance.players[pid]['name']}\n`;
+            }
+            if (matchingPlayers.length > 3) {
+                response += Client.client.intlGet(this.guildId, 'andMorePlayers', {
+                    number: matchingPlayers.length - 3
+                });
+            }
+            return response;
+        }
+
+        const playerId = matchingPlayers[0];
+        const player = bmInstance.players[playerId];
+        const currentName = player.name;
+
+        const nameHistory = PlayerActivityDB.getNameHistoryByBmId(playerId, this.guildId);
+
+        if (!nameHistory || nameHistory.length === 0) {
+            return Client.client.intlGet(this.guildId, 'noNameHistoryData', { name: currentName });
+        }
+
+        let response = `${Client.client.intlGet(this.guildId, 'whoisTitle', { name: currentName })}\n`;
+        response += `${Client.client.intlGet(this.guildId, 'whoisNameHistory')}:\n`;
+        for (const entry of nameHistory) {
+            const date = new Date(entry.first_seen).toISOString().slice(0, 10);
+            response += `  • ${entry.name} (${date})\n`;
+        }
+
+        return response;
+    }
+
     getCommandPlayer(command) {
         const instance = Client.client.getInstance(this.guildId);
         const battlemetricsId = instance.serverList[this.serverId].battlemetricsId;
@@ -3327,6 +3490,75 @@ class RustPlus extends RustPlusLib {
         return Client.client.intlGet(this.guildId, 'inGameBotMessagesUnmuted');
     }
 
+    getCommandStorage(command) {
+        const instance = Client.client.getInstance(this.guildId);
+        const prefix = this.generalSettings.prefix;
+        const commandStorage = `${prefix}${Client.client.intlGet(this.guildId, 'commandSyntaxStorage')}`;
+        const commandStorageEn = `${prefix}${Client.client.intlGet('en', 'commandSyntaxStorage')}`;
+
+        const storageMonitors = instance.serverList[this.serverId].storageMonitors;
+        const monitors = Object.entries(storageMonitors).filter(([, v]) => v.type !== 'toolCupboard');
+
+        /* No argument — list all non-TC monitors with item counts */
+        if (command.toLowerCase() === commandStorage || command.toLowerCase() === commandStorageEn) {
+            if (monitors.length === 0) {
+                return Client.client.intlGet(this.guildId, 'noStorageMonitorsFound');
+            }
+
+            const strings = [];
+            for (const [entityId, monitor] of monitors) {
+                const live = this.storageMonitors[entityId];
+                const grid = monitor.location ? ` [${monitor.location}]` : '';
+                if (!live || live.capacity === 0) {
+                    strings.push(`${monitor.name}${grid}: ${Client.client.intlGet(this.guildId, 'disconnected')}`);
+                    continue;
+                }
+                strings.push(`${monitor.name}${grid}: ${live.items.length}/${live.capacity}`);
+            }
+            return strings;
+        }
+
+        /* `!storage <name>` — show contents of a specific monitor */
+        let name;
+        if (command.toLowerCase().startsWith(`${commandStorage} `)) {
+            name = command.slice(`${commandStorage} `.length).trim();
+        }
+        else {
+            name = command.slice(`${commandStorageEn} `.length).trim();
+        }
+
+        const match = monitors.find(([, v]) => v.name.toLowerCase().includes(name.toLowerCase()));
+        if (!match) {
+            return Client.client.intlGet(this.guildId, 'noStorageMonitorWithName', { name: name });
+        }
+
+        const [entityId, monitor] = match;
+        const live = this.storageMonitors[entityId];
+        const grid = monitor.location ? ` [${monitor.location}]` : '';
+
+        if (!live || live.capacity === 0) {
+            return `${monitor.name}${grid}: ${Client.client.intlGet(this.guildId, 'disconnected')}`;
+        }
+
+        if (live.items.length === 0) {
+            return `${monitor.name}${grid}: ${Client.client.intlGet(this.guildId, 'storageMonitorEmpty')}`;
+        }
+
+        /* Aggregate stacks of the same item */
+        const totals = new globalThis.Map();
+        for (const item of live.items) {
+            const id = item.itemId.toString();
+            totals.set(id, (totals.get(id) || 0) + item.quantity);
+        }
+
+        let str = `${monitor.name}${grid}: `;
+        for (const [id, qty] of totals) {
+            const itemName = Client.client.items.getName(id) || `id:${id}`;
+            str += `${itemName} x${qty}, `;
+        }
+        return str.slice(0, -2);
+    }
+
     getCommandUpkeep() {
         const instance = Client.client.getInstance(this.guildId);
         let cupboardFound = false;
@@ -3698,14 +3930,21 @@ class RustPlus extends RustPlusLib {
         }
 
         const durability = Durability.getDurabilityData(command, null, Client.client, this.guildId);
-        let raidCosts = `${durability[1]}: `;
 
-        if(!durability) {
+        if (!durability) {
             return Client.client.intlGet(this.guildId, 'noItemWithNameFound', {
                 name: command
             });
         }
-    
+
+        if (!durability[3].explosive) {
+            return Client.client.intlGet(this.guildId, 'noExplosiveDurabilityData', {
+                name: durability[1]
+            });
+        }
+
+        let raidCosts = `${durability[1]}: `;
+
         const sortedItems = Object.values(durability[3].explosive).sort((a, b) => {
             const sulfurA = a[0].sulfur === null ? Infinity : Number(a[0].sulfur);
             const sulfurB = b[0].sulfur === null ? Infinity : Number(b[0].sulfur);
@@ -3716,6 +3955,46 @@ class RustPlus extends RustPlusLib {
         }
 
         return raidCosts.trim().trim(",");
+    }
+
+    getCommandRaidable(command) {
+        const prefix = this.generalSettings.prefix;
+        const commandRaidable = `${prefix}${Client.client.intlGet(this.guildId, 'commandSyntaxRaidable')}`;
+        const commandRaidableEn = `${prefix}${Client.client.intlGet('en', 'commandSyntaxRaidable')}`;
+
+        let difficulty = null;
+        if (command.toLowerCase().startsWith(`${commandRaidable} `)) {
+            difficulty = command.slice(`${commandRaidable} `.length).trim().toLowerCase();
+        } else if (command.toLowerCase().startsWith(`${commandRaidableEn} `)) {
+            difficulty = command.slice(`${commandRaidableEn} `.length).trim().toLowerCase();
+        }
+
+        if (difficulty && !RaidableDB.RAIDABLE_BASE_DIFFICULTIES.includes(difficulty)) {
+            return Client.client.intlGet(this.guildId, 'raidableInvalidDifficulty', {
+                difficulties: RaidableDB.RAIDABLE_BASE_DIFFICULTIES.join(', ')
+            });
+        }
+
+        const active = RaidableDB.getActive(this.serverId, this.guildId, difficulty);
+
+        if (!active || active.length === 0) {
+            if (difficulty) {
+                return Client.client.intlGet(this.guildId, 'raidableNoActiveWithDifficulty', {
+                    difficulty: difficulty
+                });
+            }
+            return Client.client.intlGet(this.guildId, 'raidableNoActive');
+        }
+
+        const strings = [];
+        for (const base of active) {
+            const diffLabel = base.difficulty ? base.difficulty.charAt(0).toUpperCase() + base.difficulty.slice(1) : '?';
+            const modeLabel = base.mode ? `[${base.mode}] ` : '';
+            const lootLabel = base.loot_count ? ` Loot: ${base.loot_count}` : '';
+            strings.push(`${modeLabel}${diffLabel}${lootLabel} @ ${base.grid}`);
+        }
+
+        return strings;
     }
 }
 

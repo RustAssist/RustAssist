@@ -23,6 +23,7 @@ const Builder = require('@discordjs/builders');
 const { joinVoiceChannel, getVoiceConnection } = require('@discordjs/voice');
 
 const DiscordMessages = require('../discordTools/discordMessages.js');
+const DiscordVoice = require('../discordTools/discordVoice.js');
 
 module.exports = {
     name: 'voice',
@@ -37,6 +38,13 @@ module.exports = {
             .addSubcommand(subcommand => subcommand
                 .setName('leave')
                 .setDescription(client.intlGet(guildId, 'commandsVoiceLeaveDesc')))
+            .addSubcommand(subcommand => subcommand
+                .setName('say')
+                .setDescription(client.intlGet(guildId, 'commandsVoiceSayDesc'))
+                .addStringOption(option => option
+                    .setName('text')
+                    .setDescription('The text to speak')
+                    .setRequired(true)))
 
     },
 
@@ -69,6 +77,17 @@ module.exports = {
                 else {
                     await DiscordMessages.sendVoiceMessage(interaction,
                         client.intlGet(interaction.guildId, 'commandsVoiceNotInVoice'));
+                }
+            } break;
+
+            case 'say': {
+                const text = interaction.options.getString('text');
+                const conn = getVoiceConnection(interaction.guild.id);
+                if (conn) {
+                    await DiscordVoice.sendDiscordVoiceMessage(interaction.guild.id, text);
+                    await DiscordMessages.sendVoiceMessage(interaction, `Playing: "${text}"`);
+                } else {
+                    await DiscordMessages.sendVoiceMessage(interaction, 'Bot is not in a voice channel.');
                 }
             } break;
 

@@ -346,7 +346,8 @@ async function pairingEntitySmartAlarm(client, guild, title, message, body) {
         image: entityExist ? alarms[body.entityId].image : 'smart_alarm.png',
         location: entityExist ? alarms[body.entityId].location : null,
         server: entityExist ? alarms[body.entityId].server : body.name,
-        messageId: entityExist ? alarms[body.entityId].messageId : null
+        messageId: entityExist ? alarms[body.entityId].messageId : null,
+        actions: entityExist ? (alarms[body.entityId].actions || []) : []
     };
     client.setInstance(guild.id, instance);
 
@@ -405,12 +406,14 @@ async function pairingEntityStorageMonitor(client, guild, title, message, body) 
             instance.serverList[serverId].storageMonitors[body.entityId].reachable = false;
         }
 
-        const teamInfo = await rustplus.getTeamInfoAsync();
-        if (await rustplus.isResponseValid(teamInfo)) {
-            const player = teamInfo.teamInfo.members.find(e => e.steamId.toString() === rustplus.playerId);
-            if (player) {
-                const location = Map.getPos(player.x, player.y, rustplus.info.correctedMapSize, rustplus);
-                instance.serverList[serverId].storageMonitors[body.entityId].location = location.location;
+        if (!instance.serverList[serverId].storageMonitors[body.entityId].location) {
+            const teamInfo = await rustplus.getTeamInfoAsync();
+            if (await rustplus.isResponseValid(teamInfo)) {
+                const player = teamInfo.teamInfo.members.find(e => e.steamId.toString() === rustplus.playerId);
+                if (player) {
+                    const location = Map.getPos(player.x, player.y, rustplus.info.correctedMapSize, rustplus);
+                    instance.serverList[serverId].storageMonitors[body.entityId].location = location.location;
+                }
             }
         }
 

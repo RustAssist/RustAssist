@@ -94,5 +94,17 @@
         "discord": true,
         "inGame": false,
         "voice": true
+    },
+    "raidableBaseClaimedSetting": {
+        "image": "vending_machine_logo.png",
+        "discord": true,
+        "inGame": true,
+        "voice": true
+    },
+    "raidableBaseDetectedSetting": {
+        "image": "vending_machine_logo.png",
+        "discord": true,
+        "inGame": false,
+        "voice": true
     }
 }

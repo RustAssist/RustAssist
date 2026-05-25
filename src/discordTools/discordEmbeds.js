@@ -1127,6 +1127,14 @@ module.exports = {
     },
 
     getRaidEmbed: function (guildId, raidDetails) {
+        if (!raidDetails[3].explosive) {
+            return module.exports.getEmbed({
+                title: `${raidDetails[1]}`,
+                color: Constants.COLOR_DEFAULT,
+                description: Client.client.intlGet(guildId, 'noExplosiveDurabilityData', { name: raidDetails[1] })
+            });
+        }
+
         const raidCosts = {
             name: '',
             time: '',

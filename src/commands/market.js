@@ -89,7 +89,22 @@ module.exports = {
                     .setRequired(false)))
             .addSubcommand(subcommand => subcommand
                 .setName('list')
-                .setDescription(client.intlGet(guildId, 'commandsMarketListDesc')));
+                .setDescription(client.intlGet(guildId, 'commandsMarketListDesc')))
+            .addSubcommand(subcommand => subcommand
+                .setName('shops')
+                .setDescription(client.intlGet(guildId, 'commandsMarketShopsDesc'))
+                .addStringOption(option => option
+                    .setName('shoptype')
+                    .setDescription(client.intlGet(guildId, 'commandsMarketShopsTypeDesc'))
+                    .setRequired(false)
+                    .addChoices(
+                        { name: 'player', value: 'player' },
+                        { name: 'npc', value: 'npc' },
+                        { name: 'all', value: 'all' }))
+                .addBooleanOption(option => option
+                    .setName('outofstock')
+                    .setDescription(client.intlGet(guildId, 'commandsMarketShopsOutOfStockDesc'))
+                    .setRequired(false)));
     },
 
     async execute(client, interaction) {
@@ -404,6 +419,152 @@ module.exports = {
 
                 rustplus.log(client.intlGet(interaction.guildId, 'infoCap'),
                     client.intlGet(interaction.guildId, 'showingSubscriptionList'));
+            } break;
+
+            case 'shops': {
+                const unknownStr = client.intlGet(interaction.guildId, 'unknown');
+                const leftStr = client.intlGet(interaction.guildId, 'remain');
+                const showOutOfStock = interaction.options.getBoolean('outofstock') ?? false;
+                const shopType = interaction.options.getString('shoptype') ?? 'player';
+                const vendingMachines = rustplus.mapMarkers.vendingMachines;
+
+                if (!vendingMachines || vendingMachines.length === 0) {
+                    const str = client.intlGet(interaction.guildId, 'noItemFound');
+                    await client.interactionEditReply(interaction, DiscordEmbeds.getActionInfoEmbed(1, str));
+                    return;
+                }
+
+                /* Monuments that contain NPC vending machines — filter them out.
+                   Uses the same radii as Map.js monumentInfo so the boundary is consistent. */
+                const NPC_SHOP_TOKENS = new Set([
+                    'bandit_camp',
+                    'outpost',
+                    'fishing_village_display_name',
+                    'large_fishing_village_display_name',
+                    'supermarket',
+                    'gas_station',
+                ]);
+                const npcMonuments = (rustplus.map.monuments || [])
+                    .filter(m => NPC_SHOP_TOKENS.has(m.token))
+                    .map(m => {
+                        const info = rustplus.map.monumentInfo[m.token];
+                        const r = info ? info.radius : 0;
+                        return { x: m.x, y: m.y, radiusSq: r * r };
+                    });
+
+                /* Cargo ship NPC shops — filter by proximity to active cargo ship(s) */
+                const CARGO_RADIUS_SQ = 75 * 75;
+                const cargoShips = rustplus.mapMarkers.cargoShips || [];
+
+                function isNearNpcMonument(vmX, vmY) {
+                    for (const m of npcMonuments) {
+                        const dx = vmX - m.x;
+                        const dy = vmY - m.y;
+                        if (dx * dx + dy * dy <= m.radiusSq) return true;
+                    }
+                    for (const ship of cargoShips) {
+                        const dx = vmX - ship.x;
+                        const dy = vmY - ship.y;
+                        if (dx * dx + dy * dy <= CARGO_RADIUS_SQ) return true;
+                    }
+                    return false;
+                }
+
+                /* Grid-position regex: on-map locations look like "A1", "AB12", etc. */
+                const GRID_RE = /^[A-Z]+\d+$/;
+
+                /* Group by unique name+location to deduplicate stacked machines */
+                const groups = Object.create(null);
+                for (const vm of vendingMachines) {
+                    /* Skip VMs outside the playable map grid (e.g. Deep Sea Floating City) */
+                    if (!vm.location || !GRID_RE.test(vm.location.location)) continue;
+                    const isNpc = isNearNpcMonument(vm.x, vm.y);
+                    if (shopType === 'player' && isNpc) continue;
+                    if (shopType === 'npc' && !isNpc) continue;
+                    const loc = vm.location ? vm.location.string : unknownStr;
+                    const shopName = vm.name || unknownStr;
+                    const key = `${shopName}|${loc}`;
+                    if (!groups[key]) groups[key] = { shopName, loc, orders: [] };
+                    if (vm.sellOrders) {
+                        for (const order of vm.sellOrders) {
+                            if (!showOutOfStock && order.amountInStock === 0) continue;
+                            const sig = `${order.itemId}|${order.quantity}|${order.currencyId}|${order.costPerItem}`;
+                            if (!groups[key].orders.find(o => o.sig === sig)) {
+                                groups[key].orders.push({ sig, order });
+                            }
+                        }
+                    }
+                }
+
+                /* Build per-shop blocks then paginate into ≤4000-char pages */
+                const shopBlocks = [];
+                for (const { shopName, loc, orders } of Object.values(groups)) {
+                    if (!orders.length) continue;
+
+                    let block = `# ${shopName} [${loc}]\n`;
+                    for (const { order } of orders) {
+                        const itemName = client.items.itemExist(order.itemId.toString())
+                            ? client.items.getName(order.itemId) : unknownStr;
+                        const currName = client.items.itemExist(order.currencyId.toString())
+                            ? client.items.getName(order.currencyId) : unknownStr;
+                        const bp = order.itemIsBlueprint ? ' (BP)' : '';
+                        const cbp = order.currencyIsBlueprint ? ' (BP)' : '';
+                        const oos = order.amountInStock === 0 ? ' [OOS]' : '';
+                        block += `+ ${order.quantity}x ${itemName}${bp} — ${order.costPerItem}x ${currName}${cbp} (${order.amountInStock} ${leftStr})${oos}\n`;
+                    }
+                    shopBlocks.push(block);
+                }
+
+                /* Pack blocks into pages — each page is a ```diff code block ≤4000 chars */
+                const FENCE = '```diff\n';
+                const CLOSE = '```';
+                const PAGE_LIMIT = 4000;
+                const pages = [];
+                let current = FENCE;
+                for (const block of shopBlocks) {
+                    if (current.length + block.length + CLOSE.length > PAGE_LIMIT) {
+                        pages.push(current + CLOSE);
+                        current = FENCE;
+                    }
+                    current += block;
+                }
+                if (current !== FENCE) pages.push(current + CLOSE);
+
+                if (pages.length === 0) {
+                    const str = client.intlGet(interaction.guildId, 'noItemFound');
+                    await client.interactionEditReply(interaction, DiscordEmbeds.getActionInfoEmbed(1, str));
+                    return;
+                }
+
+                const shopTitle = client.intlGet(interaction.guildId, 'commandsMarketShopsDesc');
+                const footerText = instance.serverList[rustplus.serverId].title;
+
+                client.log(client.intlGet(null, 'infoCap'), client.intlGet(null, 'slashCommandValueChange', {
+                    id: `${verifyId}`,
+                    value: `shops`
+                }));
+
+                /* First page via editReply, subsequent pages via channel follow-ups */
+                await client.interactionEditReply(interaction, {
+                    embeds: [DiscordEmbeds.getEmbed({
+                        color: Constants.COLOR_DEFAULT,
+                        title: `${shopTitle}${pages.length > 1 ? ` (1/${pages.length})` : ''}`,
+                        description: pages[0],
+                        footer: { text: footerText }
+                    })]
+                });
+                for (let i = 1; i < pages.length; i++) {
+                    await client.messageSend(interaction.channel, {
+                        embeds: [DiscordEmbeds.getEmbed({
+                            color: Constants.COLOR_DEFAULT,
+                            title: `${shopTitle} (${i + 1}/${pages.length})`,
+                            description: pages[i],
+                            footer: { text: footerText }
+                        })]
+                    });
+                }
+                rustplus.log(client.intlGet(interaction.guildId, 'infoCap'),
+                    client.intlGet(interaction.guildId, 'commandsMarketShopsDesc'));
             } break;
 
             default: {

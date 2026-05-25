@@ -18,37 +18,50 @@
     https://github.com/alexemanuelol/rustplusplus
 
 */
-const { getVoiceConnection, createAudioPlayer, createAudioResource } = require('@discordjs/voice');
-const getStaticFilesStorage = require('../util/getStaticFilesStorage');
+const { Readable } = require('stream');
+const { getVoiceConnection, createAudioPlayer, createAudioResource, NoSubscriberBehavior,
+    VoiceConnectionStatus, entersState } = require('@discordjs/voice');
 const Client = require('../../index.ts');
+const getStaticFilesStorage = require('../util/getStaticFilesStorage');
 
 const Actors = getStaticFilesStorage().getDatasetObject('actors');
 
 module.exports = {
     sendDiscordVoiceMessage: async function (guildId, text) {
         const connection = getVoiceConnection(guildId);
-        const voice = await this.getVoice(guildId);
-        const url = `https://cache-a.oddcast.com/tts/genC.php?EID=${voice.EID}&LID=${voice.LID}&VID=${voice.VID}&TXT=${encodeURIComponent(text)}&EXT=mp3`;
+        if (!connection) return;
 
-        if (connection) {
-            let stream = (await (await fetch(url)).blob()).stream()
-            const resource = createAudioResource(stream);
-            const player = createAudioPlayer();
+        /* Wait for the connection to be ready if it's not */
+        if (connection.state.status !== VoiceConnectionStatus.Ready) {
+            try {
+                await entersState(connection, VoiceConnectionStatus.Ready, 30_000);
+            } catch (e) {
+                return;
+            }
+        }
+
+        const language = this.getLanguage(guildId);
+        const url = `https://translate.google.com/translate_tts?ie=UTF-8&tl=${language}&client=tw-ob&q=${encodeURIComponent(text)}`;
+
+        try {
+            const response = await fetch(url);
+            if (!response.ok) return;
+            const buffer = Buffer.from(await response.arrayBuffer());
+
+            const player = createAudioPlayer({
+                behaviors: { noSubscriber: NoSubscriberBehavior.Play }
+            });
+
             connection.subscribe(player);
+            const resource = createAudioResource(Readable.from(buffer));
             player.play(resource);
+        } catch (e) {
+            /* Silently ignore TTS errors */
         }
     },
 
-    getVoice: async function (guildId) {
+    getLanguage: function (guildId) {
         const instance = Client.client.getInstance(guildId);
-        const gender = instance.generalSettings.voiceGender;
-        const language = instance.generalSettings.language;
-
-        if (Actors[language]?.[gender] === null || Actors[language]?.[gender] === undefined) {
-            return Actors[language]?.[gender === 'male' ? 'female' : 'male'];
-        }
-        else {
-            return Actors[language]?.[gender];
-        }
+        return instance.generalSettings.language || 'en';
     },
 }

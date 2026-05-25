@@ -38,6 +38,7 @@ class Map {
         this._rustplus = rustplus;
 
         this._font = null;
+        this._smallFont = null;
 
         this._mapMarkerImageMeta = {
             map: {
@@ -280,6 +281,8 @@ class Map {
     set rustplus(rustplus) { this._rustplus = rustplus; }
     get font() { return this._font; }
     set font(font) { this._font = font; }
+    get smallFont() { return this._smallFont; }
+    set smallFont(smallFont) { this._smallFont = smallFont; }
     get mapMarkerImageMeta() { return this._mapMarkerImageMeta; }
     set mapMarkerImageMeta(mapMarkerImageMeta) { this._mapMarkerImageMeta = mapMarkerImageMeta; }
     get monumentInfo() { return this._monumentInfo; }
@@ -322,6 +325,7 @@ class Map {
             this.font = await Jimp.loadFont(
                 Path.join(__dirname, '..', 'resources/fonts/YuGothic.fnt'));
         }
+        this.smallFont = await Jimp.loadFont(Jimp.FONT_SANS_10_BLACK);
     }
 
     async setupMapMarkerImages() {
@@ -385,9 +389,48 @@ class Map {
         }
 
         let mapMarkers = await this.rustplus.getMapMarkersAsync();
-        if (!(await this.rustplus.isResponseValid(mapMarkers))) return;
+        if (!(await this.rustplus.isResponseValid(mapMarkers))) {
+            this.rustplus.log(Client.client.intlGet(null, 'warningCap'), 'mapAppendMarkers: invalid response');
+            return;
+        }
 
-        for (let marker of mapMarkers.mapMarkers.markers) {
+        const markers = mapMarkers.mapMarkers.markers;
+        this.rustplus.log(Client.client.intlGet(null, 'infoCap'),
+            `mapAppendMarkers: received ${markers.length} markers`);
+
+        const playerType = this.rustplus.mapMarkers.types.Player;
+        const vendingType = this.rustplus.mapMarkers.types.VendingMachine;
+
+        /* Build NPC monument proximity filter (same logic as /market shops) */
+        const NPC_SHOP_TOKENS = new Set([
+            'bandit_camp', 'outpost', 'fishing_village_display_name',
+            'large_fishing_village_display_name', 'supermarket', 'gas_station',
+        ]);
+        const npcMonuments = (this.monuments || [])
+            .filter(m => NPC_SHOP_TOKENS.has(m.token))
+            .map(m => {
+                const info = this.monumentInfo && this.monumentInfo[m.token];
+                const r = info ? info.radius : 0;
+                return { x: m.x, y: m.y, radiusSq: r * r };
+            });
+        const CARGO_RADIUS_SQ = 75 * 75;
+        const cargoShips = this.rustplus.mapMarkers.cargoShips || [];
+        const isNpcVendingMachine = (mx, my) => {
+            for (const m of npcMonuments) {
+                const dx = mx - m.x, dy = my - m.y;
+                if (dx * dx + dy * dy <= m.radiusSq) return true;
+            }
+            for (const ship of cargoShips) {
+                const dx = mx - ship.x, dy = my - ship.y;
+                if (dx * dx + dy * dy <= CARGO_RADIUS_SQ) return true;
+            }
+            return false;
+        };
+
+        /* Collect vending machine label groups keyed by pixel position */
+        const vendingGroups = Object.create(null);
+
+        for (let marker of markers) {
             let x = marker.x * ((this.width - 2 * this.oceanMargin) / this.rustplus.info.mapSize) + this.oceanMargin;
             let n = this.height - 2 * this.oceanMargin;
             let y = this.height - (marker.y * (n / this.rustplus.info.mapSize) + this.oceanMargin);
@@ -400,17 +443,93 @@ class Map {
 
             try {
                 let markerImageMeta = this.getMarkerImageMetaByType(marker.type);
+                if (!markerImageMeta) continue; /* No image registered for this type */
+
+                /* Skip NPC vending machines */
+                if (marker.type === vendingType && isNpcVendingMachine(marker.x, marker.y)) continue;
+
                 let size = this.mapMarkerImageMeta[markerImageMeta].size;
 
-                /* Rotate */
-                this.mapMarkerImageMeta[markerImageMeta].jimp.rotate(marker.rotation);
+                /* Clone so modifications don't mutate the shared instance */
+                const markerJimp = this.mapMarkerImageMeta[markerImageMeta].jimp.clone();
 
-                this.mapMarkerImageMeta.map.jimp.composite(
-                    this.mapMarkerImageMeta[markerImageMeta].jimp, x - (size / 2), y - (size / 2)
-                );
+                /* Player: draw a white direction notch pointing up before rotating */
+                if (marker.type === playerType) {
+                    const sz = markerJimp.bitmap.width;
+                    const icx = Math.floor(sz / 2);
+                    const icy = Math.floor(sz / 2);
+                    markerJimp.scan(0, 0, sz, sz, (px, py, idx) => {
+                        /* Thin white stripe from near-top to center, only within circle pixels */
+                        if (Math.abs(px - icx) <= 1 && py >= 2 && py < icy &&
+                                markerJimp.bitmap.data[idx + 3] > 0) {
+                            markerJimp.bitmap.data[idx] = 255;
+                            markerJimp.bitmap.data[idx + 1] = 255;
+                            markerJimp.bitmap.data[idx + 2] = 255;
+                            markerJimp.bitmap.data[idx + 3] = 255;
+                        }
+                    });
+                }
+
+                /* Vending machine: grey out if out of stock */
+                if (marker.type === vendingType && marker.outOfStock) {
+                    markerJimp.greyscale();
+                }
+
+                /* Rotate */
+                const rotation = marker.rotation || 0;
+                markerJimp.rotate(rotation);
+
+                /* Clamp to image bounds to avoid Jimp throwing on negative coords */
+                const cx = Math.max(0, Math.round(x - (size / 2)));
+                const cy = Math.max(0, Math.round(y - (size / 2)));
+
+                this.mapMarkerImageMeta.map.jimp.composite(markerJimp, cx, cy);
+
+                /* Collect vending machine label info */
+                if (marker.type === vendingType) {
+                    if (marker.name) vendingGroups[`${cx},${cy}`] = { cx, cy, name: marker.name };
+                }
             }
             catch (e) {
-                /* Ignore */
+                this.rustplus.log(Client.client.intlGet(null, 'warningCap'),
+                    `mapAppendMarkers: failed to composite marker type=${marker.type} x=${x} y=${y}: ${e.message}`);
+            }
+        }
+
+        /* Proximity-merge vending machine labels (within CLUSTER_RADIUS pixels) */
+        if (this.smallFont) {
+            const CLUSTER_RADIUS = 40;
+            const points = Object.values(vendingGroups);
+            const visited = new Array(points.length).fill(false);
+            const clusters = [];
+
+            for (let i = 0; i < points.length; i++) {
+                if (visited[i]) continue;
+                const cluster = [points[i]];
+                visited[i] = true;
+                for (let j = i + 1; j < points.length; j++) {
+                    if (visited[j]) continue;
+                    const dx = points[i].cx - points[j].cx;
+                    const dy = points[i].cy - points[j].cy;
+                    if (Math.sqrt(dx * dx + dy * dy) <= CLUSTER_RADIUS) {
+                        cluster.push(points[j]);
+                        visited[j] = true;
+                    }
+                }
+                clusters.push(cluster);
+            }
+
+            for (const cluster of clusters) {
+                const centX = Math.round(cluster.reduce((s, p) => s + p.cx, 0) / cluster.length);
+                const centY = Math.round(cluster.reduce((s, p) => s + p.cy, 0) / cluster.length);
+                const uniqueNames = [...new Set(cluster.map(p => p.name).filter(Boolean))];
+                const maxLen = 22;
+                let labelY = centY + 21;
+                for (const name of uniqueNames) {
+                    const display = name.length > maxLen ? name.substring(0, maxLen - 1) + '…' : name;
+                    this.mapMarkerImageMeta.map.jimp.print(this.smallFont, centX, labelY, display);
+                    labelY += 11; /* line height for size-10 font */
+                }
             }
         }
     }

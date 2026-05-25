@@ -55,6 +55,7 @@ class DiscordBot extends Discord.Client {
         this.rustplusReconnectTimers = new Object();
         this.rustplusLiteReconnectTimers = new Object();
         this.rustplusReconnecting = new Object();
+        this.rustplusReconnectAttempts = new Object();
         this.rustplusMaps = new Object();
 
         this.uptimeBot = null;
@@ -335,6 +336,7 @@ class DiscordBot extends Discord.Client {
     resetRustplusVariables(guildId) {
         this.activeRustplusInstances[guildId] = false;
         this.rustplusReconnecting[guildId] = false;
+        this.rustplusReconnectAttempts[guildId] = 0;
         delete this.rustplusMaps[guildId];
 
         if (this.rustplusReconnectTimers[guildId]) {

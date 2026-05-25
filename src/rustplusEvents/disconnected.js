@@ -68,6 +68,20 @@ module.exports = {
 
             rustplus.log(client.intlGet(null, 'reconnectingCap'), client.intlGet(null, 'reconnectingToServer'));
 
+            /* Stash per-player timer state so it can be restored after reconnect,
+               preventing AFK/offline timers from resetting due to a network blip
+               or daily server reboot. */
+            if (rustplus.team !== null) {
+                if (!client.rustplusPlayerStash) client.rustplusPlayerStash = {};
+                client.rustplusPlayerStash[guildId] = {};
+                for (const player of rustplus.team.players) {
+                    client.rustplusPlayerStash[guildId][player.steamId] = {
+                        lastMovement: player.lastMovement,
+                        wentOfflineTime: player.wentOfflineTime,
+                    };
+                }
+            }
+
             delete client.rustplusInstances[guildId];
 
             if (client.rustplusReconnectTimers[guildId]) {
@@ -75,9 +89,19 @@ module.exports = {
                 client.rustplusReconnectTimers[guildId] = null;
             }
 
+            const attempts = client.rustplusReconnectAttempts[guildId] || 0;
+            const delay = Math.min(
+                Config.general.reconnectIntervalMs * Math.pow(2, attempts),
+                300000 /* 5 min cap */
+            );
+            client.rustplusReconnectAttempts[guildId] = attempts + 1;
+
+            rustplus.log(client.intlGet(null, 'reconnectingCap'),
+                `Reconnect attempt ${attempts + 1}, waiting ${delay / 1000}s`);
+
             client.rustplusReconnectTimers[guildId] = setTimeout(
                 client.createRustplusInstance.bind(client),
-                Config.general.reconnectIntervalMs,
+                delay,
                 guildId,
                 rustplus.server,
                 rustplus.port,
