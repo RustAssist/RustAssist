@@ -94,6 +94,8 @@
     "channelNameSwitchGroups": "switchGroups",
     "channelNameTeamchat": "týmový chat",
     "channelNameTrackers": "trackery",
+    "channelNotFound": "Nepodařilo se najít kanál: {channel}",
+    "errorFindingChannel": "Chyba při hledání kanálu: {error}",
     "chinook47": "Chinook 47",
     "chinook47DetectedSetting": "Když na mapu vstoupí Chinook 47, pošleti notifikaci.",
     "chinook47EntersMap": "Chinook 47 vstupuje na mapu z {location} aby vyhodil uzamčenou bednu.",
