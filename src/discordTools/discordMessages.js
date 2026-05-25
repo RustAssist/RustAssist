@@ -298,7 +298,7 @@ module.exports = {
         const content = {
             embeds: [DiscordEmbeds.getServerWipeDetectedEmbed(guildId, serverId)],
             files: [new Discord.AttachmentBuilder(
-                Path.join(__dirname, '..', '..', `maps/${guildId}_map_full.png`))],
+                Path.join(__dirname, '..', '..', `maps/${guildId}_map_full.jpg`))],
             content: instance.generalSettings.mapWipeNotifyEveryone ? '@everyone' : ''
         }
 
@@ -320,7 +320,7 @@ module.exports = {
 
         const content = {
             files: [new Discord.AttachmentBuilder(
-                Path.join(__dirname, '..', '..', `maps/${guildId}_map_full.png`))]
+                Path.join(__dirname, '..', '..', `maps/${guildId}_map_full.jpg`))]
         }
 
         const message = await module.exports.sendMessage(guildId, content, instance.informationMessageId.map,
@@ -400,7 +400,7 @@ module.exports = {
 
         const content = {
             files: [new Discord.AttachmentBuilder(
-                Path.join(__dirname, '..', '..', `maps/${rustplus.guildId}_map_full.png`))]
+                Path.join(__dirname, '..', '..', `maps/${rustplus.guildId}_map_full.jpg`))]
         }
 
         const message = await module.exports.sendMessage(rustplus.guildId, content,

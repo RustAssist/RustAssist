@@ -425,11 +425,11 @@ class Map {
             await this.mapAppendMonuments();
         }
 
-        await this.mapMarkerImageMeta.map.jimp.writeAsync(
-            this.mapMarkerImageMeta.map.image.replace('clean.png', 'full.png'));
+        await this.mapMarkerImageMeta.map.jimp.quality(85).writeAsync(
+            this.mapMarkerImageMeta.map.image.replace('clean.png', 'full.jpg'));
 
         try {
-            const image = Gm(this.mapMarkerImageMeta.map.image.replace('clean.png', 'full.png'));
+            const image = Gm(this.mapMarkerImageMeta.map.image.replace('clean.png', 'full.jpg'));
 
             if (this.rustplus.info === null) {
                 this.rustplus.log(Client.client.intlGet(null, 'warningCap'),
@@ -439,7 +439,6 @@ class Map {
 
             if (!markers) return;
 
-            /* Tracer for CargoShip */
             image.stroke(Constants.COLOR_CARGO_TRACER, 2);
             for (const [id, coords] of Object.entries(this.rustplus.cargoShipTracers)) {
                 let prev = null;
@@ -455,7 +454,6 @@ class Map {
                 }
             }
 
-            /* Tracer for Patrol Helicopter */
             image.stroke(Constants.COLOR_PATROL_HELICOPTER_TRACER, 2);
             for (const [id, coords] of Object.entries(this.rustplus.patrolHelicopterTracers)) {
                 let prev = null;
@@ -471,7 +469,7 @@ class Map {
                 }
             }
 
-            await this.gmWriteAsync(image, this.mapMarkerImageMeta.map.image.replace('clean.png', 'full.png'));
+            await this.gmWriteAsync(image, this.mapMarkerImageMeta.map.image.replace('clean.png', 'full.jpg'));
         }
         catch (error) {
             this.rustplus.log(Client.client.intlGet(null, 'warningCap'),

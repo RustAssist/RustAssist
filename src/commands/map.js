@@ -91,7 +91,7 @@ module.exports = {
 		}
 		else {
 			file = new Discord.AttachmentBuilder(
-				Path.join(__dirname, '..', '..', `maps/${interaction.guildId}_map_full.png`));
+				Path.join(__dirname, '..', '..', `maps/${interaction.guildId}_map_full.jpg`));
 		}
 
 		client.log(client.intlGet(null, 'infoCap'), client.intlGet(null, 'slashCommandValueChange', {
@@ -100,10 +100,11 @@ module.exports = {
 		}));
 
 		const fileName = (interaction.options.getSubcommand() === 'clean') ? 'clean' : 'full';
+		const fileExt = (interaction.options.getSubcommand() === 'clean') ? 'png' : 'jpg';
 		await client.interactionEditReply(interaction, {
 			embeds: [DiscordEmbeds.getEmbed({
 				color: Constants.COLOR_DEFAULT,
-				image: `attachment://${interaction.guildId}_map_${fileName}.png`,
+				image: `attachment://${interaction.guildId}_map_${fileName}.${fileExt}`,
 				footer: { text: instance.serverList[rustplus.serverId].title }
 			})],
 			files: [file],
