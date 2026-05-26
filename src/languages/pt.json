@@ -830,7 +830,6 @@
     "value": "Valor",
     "vendingMachine": "Máquina de Venda",
     "vendingMachineDetectedSetting": "Quando uma nova Máquina de Venda Automática for detetada, envia uma notificação.",
-    "raidableBaseClaimedSetting": "When a Raidable Base is claimed, send a notification.",
     "voiceCap": "VOZ",
     "warningCap": "AVISO",
     "waterTreatmentPlant": "Estação de Tratamento de Água",

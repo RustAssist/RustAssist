@@ -824,7 +824,6 @@
     "value": "Wartość",
     "vendingMachine": "Vending Machine",
     "vendingMachineDetectedSetting": "Kiedy wykryto nowy automat vendingowy, wyślij powiadomienie.",
-    "raidableBaseClaimedSetting": "When a Raidable Base is claimed, send a notification.",
     "voiceCap": "GŁOS",
     "warningCap": "WARNING",
     "waterTreatmentPlant": "Oczyszczalnia wody",

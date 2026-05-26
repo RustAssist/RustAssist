@@ -822,7 +822,6 @@
     "value": "Hodnota",
     "vendingMachine": "Prodejní automat",
     "vendingMachineDetectedSetting": "Když je nalezen nový prodejní automat, pošli oznámení.",
-    "raidableBaseClaimedSetting": "When a Raidable Base is claimed, send a notification.",
     "voiceCap": "ZVUK",
     "warningCap": "VAROVÁNÍ",
     "waterTreatmentPlant": "Čistička odpadních vod",

@@ -37,7 +37,6 @@ const Languages = require('../util/languages.js');
 const Logger = require('./Logger.js');
 const Map = require('../util/map.js');
 const getRuntimeDataStorage = require('../util/getRuntimeDataStorage');
-const RaidableDB = require('../util/raidableDatabase.js');
 const RustPlusLite = require('../structures/RustPlusLite');
 const TeamHandler = require('../handlers/teamHandler.js');
 const Timer = require('../util/timer.js');
@@ -3957,45 +3956,6 @@ class RustPlus extends RustPlusLib {
         return raidCosts.trim().trim(",");
     }
 
-    getCommandRaidable(command) {
-        const prefix = this.generalSettings.prefix;
-        const commandRaidable = `${prefix}${Client.client.intlGet(this.guildId, 'commandSyntaxRaidable')}`;
-        const commandRaidableEn = `${prefix}${Client.client.intlGet('en', 'commandSyntaxRaidable')}`;
-
-        let difficulty = null;
-        if (command.toLowerCase().startsWith(`${commandRaidable} `)) {
-            difficulty = command.slice(`${commandRaidable} `.length).trim().toLowerCase();
-        } else if (command.toLowerCase().startsWith(`${commandRaidableEn} `)) {
-            difficulty = command.slice(`${commandRaidableEn} `.length).trim().toLowerCase();
-        }
-
-        if (difficulty && !RaidableDB.RAIDABLE_BASE_DIFFICULTIES.includes(difficulty)) {
-            return Client.client.intlGet(this.guildId, 'raidableInvalidDifficulty', {
-                difficulties: RaidableDB.RAIDABLE_BASE_DIFFICULTIES.join(', ')
-            });
-        }
-
-        const active = RaidableDB.getActive(this.serverId, this.guildId, difficulty);
-
-        if (!active || active.length === 0) {
-            if (difficulty) {
-                return Client.client.intlGet(this.guildId, 'raidableNoActiveWithDifficulty', {
-                    difficulty: difficulty
-                });
-            }
-            return Client.client.intlGet(this.guildId, 'raidableNoActive');
-        }
-
-        const strings = [];
-        for (const base of active) {
-            const diffLabel = base.difficulty ? base.difficulty.charAt(0).toUpperCase() + base.difficulty.slice(1) : '?';
-            const modeLabel = base.mode ? `[${base.mode}] ` : '';
-            const lootLabel = base.loot_count ? ` Loot: ${base.loot_count}` : '';
-            strings.push(`${modeLabel}${diffLabel}${lootLabel} @ ${base.grid}`);
-        }
-
-        return strings;
-    }
 }
 
 module.exports = RustPlus;

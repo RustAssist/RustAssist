@@ -830,7 +830,6 @@
     "value": "Valeur",
     "vendingMachine": "Vending Machine",
     "vendingMachineDetectedSetting": "Lorsqu'une nouvelle vending Machines est détecté, envoyer une notification.",
-    "raidableBaseClaimedSetting": "When a Raidable Base is claimed, send a notification.",
     "voiceCap": "VOIX",
     "warningCap": "ATTENTION",
     "waterTreatmentPlant": "Station d'épuration",

@@ -830,7 +830,6 @@
     "value": "Wert",
     "vendingMachine": "Verkaufsautomat",
     "vendingMachineDetectedSetting": "Wenn ein neuer Verkaufsautomat erkannt wird, sende eine Benachrichtigung.",
-    "raidableBaseClaimedSetting": "When a Raidable Base is claimed, send a notification.",
     "voiceCap": "VOICE",
     "warningCap": "WARNUNG",
     "waterTreatmentPlant": "Klärwerk",

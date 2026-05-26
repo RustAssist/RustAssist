@@ -20,7 +20,6 @@
 
 const Constants = require('../util/constants.js');
 const Map = require('../util/map.js');
-const RaidableDB = require('../util/raidableDatabase.js');
 const Timer = require('../util/timer');
 
 class MapMarkers {
@@ -328,34 +327,11 @@ class MapMarkers {
 
             if (!this.rustplus.isFirstPoll && !Map.isOutsideGridSystem(marker.x, marker.y, mapSize, 4 * Map.gridDiameter)) {
                 if (!this.knownVendingMachines.some(e => e.x === marker.x && e.y === marker.y)) {
-                    /* Check if this is a Raidable Base */
-                    const raidInfo = RaidableDB.parseRaidableBaseName(marker.name);
-                    if (raidInfo) {
-                        RaidableDB.recordEvent(this.rustplus.serverId, this.rustplus.guildId, 'spawn', {
-                            difficulty: raidInfo.difficulty,
-                            mode: raidInfo.mode,
-                            lootCount: raidInfo.lootCount,
-                            location: pos.string,
-                            grid: pos.location,
-                            x: marker.x,
-                            y: marker.y
-                        });
-
-                        this.rustplus.sendEvent(
-                            this.rustplus.notificationSettings.raidableBaseDetectedSetting,
-                            this.client.intlGet(this.rustplus.guildId, 'raidableBaseDetected', {
-                                difficulty: raidInfo.difficulty,
-                                location: pos.location
-                            }),
-                            null,
-                            Constants.COLOR_RAIDABLE_BASE_DETECTED);
-                    } else {
-                        this.rustplus.sendEvent(
-                            this.rustplus.notificationSettings.vendingMachineDetectedSetting,
-                            this.client.intlGet(this.rustplus.guildId, 'newVendingMachine', { location: pos.string }),
-                            null,
-                            Constants.COLOR_NEW_VENDING_MACHINE);
-                    }
+                    this.rustplus.sendEvent(
+                        this.rustplus.notificationSettings.vendingMachineDetectedSetting,
+                        this.client.intlGet(this.rustplus.guildId, 'newVendingMachine', { location: pos.string }),
+                        null,
+                        Constants.COLOR_NEW_VENDING_MACHINE);
                 }
             }
 
@@ -365,23 +341,6 @@ class MapMarkers {
 
         /* VendingMachine markers that have left. */
         for (let marker of leftMarkers) {
-            /* Check if a raidable base despawned */
-            const raidInfo = RaidableDB.parseRaidableBaseName(marker.name);
-            if (raidInfo && !this.rustplus.isFirstPoll) {
-                let mapSize = this.rustplus.info.correctedMapSize;
-                let pos = Map.getPos(marker.x, marker.y, mapSize, this.rustplus);
-
-                RaidableDB.recordEvent(this.rustplus.serverId, this.rustplus.guildId, 'despawned', {
-                    difficulty: raidInfo.difficulty,
-                    mode: raidInfo.mode,
-                    lootCount: raidInfo.lootCount,
-                    location: pos.string,
-                    grid: pos.location,
-                    x: marker.x,
-                    y: marker.y
-                });
-            }
-
             this.vendingMachines = this.vendingMachines.filter(e => e.x !== marker.x || e.y !== marker.y);
         }
 
@@ -390,33 +349,6 @@ class MapMarkers {
             let mapSize = this.rustplus.info.correctedMapSize;
             let pos = Map.getPos(marker.x, marker.y, mapSize, this.rustplus);
             let vendingMachine = this.getMarkerByTypeXY(this.types.VendingMachine, marker.x, marker.y);
-
-            /* Detect Raidable Base claim: name changed to include "Claimed". */
-            if (!this.rustplus.isFirstPoll &&
-                    typeof marker.name === 'string' &&
-                    marker.name.toLowerCase().includes('claimed') &&
-                    !(vendingMachine.name && vendingMachine.name.toLowerCase().includes('claimed'))) {
-                const raidInfo = RaidableDB.parseRaidableBaseName(marker.name);
-
-                if (raidInfo) {
-                    RaidableDB.recordEvent(this.rustplus.serverId, this.rustplus.guildId, 'claimed', {
-                        difficulty: raidInfo.difficulty,
-                        mode: raidInfo.mode,
-                        lootCount: raidInfo.lootCount,
-                        location: pos.string,
-                        grid: pos.location,
-                        x: marker.x,
-                        y: marker.y
-                    });
-                }
-
-                this.rustplus.sendEvent(
-                    this.rustplus.notificationSettings.raidableBaseClaimedSetting,
-                    this.client.intlGet(this.rustplus.guildId, 'raidableBaseClaimed',
-                        { location: pos.location }),
-                    null,
-                    Constants.COLOR_RAIDABLE_BASE_CLAIMED);
-            }
 
             vendingMachine.id = marker.id;
             vendingMachine.name = marker.name;
@@ -457,30 +389,6 @@ class MapMarkers {
             }
 
             this.deepSeas = [];
-        }
-
-        /* On first poll (reconnect), reconcile DB: mark any "active" raidable bases
-           that are no longer on the map as despawned. */
-        if (this.rustplus.isFirstPoll) {
-            const active = RaidableDB.getActive(this.rustplus.serverId, this.rustplus.guildId);
-            for (const base of active) {
-                const stillOnMap = this.vendingMachines.some(vm => {
-                    if (Math.abs(vm.x - base.x) > 1 || Math.abs(vm.y - base.y) > 1) return false;
-                    return vm.name && vm.name.toLowerCase().includes('raidable base');
-                });
-
-                if (!stillOnMap) {
-                    RaidableDB.recordEvent(this.rustplus.serverId, this.rustplus.guildId, 'despawned', {
-                        difficulty: base.difficulty,
-                        mode: base.mode,
-                        lootCount: base.loot_count,
-                        location: base.location,
-                        grid: base.grid,
-                        x: base.x,
-                        y: base.y
-                    });
-                }
-            }
         }
     }
 
