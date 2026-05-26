@@ -21,8 +21,13 @@
 const Axios = require('axios');
 
 const Client = require('../../index.ts');
+const Config = require('../../config');
 const getStaticFilesStorage = require('../util/getStaticFilesStorage');
-const Utils = require = require('../util/utils.js');
+const Utils = require('../util/utils.js');
+const {
+    buildBattlemetricsRequestConfig,
+    getBattlemetricsRequestFailureDetails
+} = require('../util/battlemetricsAuth.js');
 
 const randomUsernamesData = getStaticFilesStorage().getDatasetObject('RandomUsernames');
 const randomUsernames = Array.isArray(randomUsernamesData.RandomUsernames) ? randomUsernamesData.RandomUsernames : [];
@@ -221,10 +226,10 @@ class Battlemetrics {
      */
     async #request(api_call) {
         try {
-            return await Axios.get(api_call);
+            return await Axios.get(api_call, buildBattlemetricsRequestConfig(Config.battlemetrics.token));
         }
         catch (e) {
-            return {};
+            return { errorDetails: getBattlemetricsRequestFailureDetails(e) };
         }
     }
 
@@ -388,7 +393,9 @@ class Battlemetrics {
 
         if (response.status !== 200) {
             Client.client.log(Client.client.intlGet(null, 'errorCap'),
-                Client.client.intlGet(null, 'battlemetricsApiRequestFailed', { api_call: api_call }), 'error');
+                Client.client.intlGet(null, 'battlemetricsApiRequestFailed', {
+                    api_call: `${api_call}${response.errorDetails || ''}`
+                }), 'error');
             return null;
         }
 
@@ -447,7 +454,9 @@ class Battlemetrics {
 
         if (response.status !== 200) {
             Client.client.log(Client.client.intlGet(null, 'errorCap'),
-                Client.client.intlGet(null, 'battlemetricsApiRequestFailed', { api_call: search }), 'error');
+                Client.client.intlGet(null, 'battlemetricsApiRequestFailed', {
+                    api_call: `${search}${response.errorDetails || ''}`
+                }), 'error');
             return null;
         }
 
