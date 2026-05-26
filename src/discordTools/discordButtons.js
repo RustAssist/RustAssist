@@ -508,20 +508,15 @@ module.exports = {
                 }),
                 module.exports.getButton({
                     style: Discord.ButtonStyle.Link,
-                    label: 'FORK DEVELOPER',
-                    url: 'https://github.com/faithix'
-                }),
-                module.exports.getButton({
-                    style: Discord.ButtonStyle.Link,
                     label: 'REPOSITORY',
-                    url: 'https://github.com/faithix/rustplusplus'
+                    url: 'https://github.com/auuruum/rustplusplus'
                 })
             ),
             new Discord.ActionRowBuilder().addComponents(
                 module.exports.getButton({
                     style: Discord.ButtonStyle.Link,
                     label: 'DOCUMENTATION',
-                    url: 'https://github.com/faithix/rustplusplus/blob/master/docs/documentation.md'
+                    url: 'https://github.com/auuruum/rustplusplus/blob/master/docs/documentation.md'
                 }),
                 module.exports.getButton({
                     style: Discord.ButtonStyle.Link,
