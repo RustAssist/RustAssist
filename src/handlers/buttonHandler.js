@@ -21,11 +21,15 @@
 const Discord = require('discord.js');
 
 const Config = require('../../config');
+const Constants = require('../util/constants.js');
 const DiscordMessages = require('../discordTools/discordMessages.js');
 const DiscordTools = require('../discordTools/discordTools.js');
+const DiscordEmbeds = require('../discordTools/discordEmbeds.js');
 const SmartSwitchGroupHandler = require('./smartSwitchGroupHandler.js');
 const DiscordButtons = require('../discordTools/discordButtons.js');
 const DiscordModals = require('../discordTools/discordModals.js');
+const PlayerActivityDB = require('../util/database.js');
+const TrackerActivityReport = require('../util/trackerActivityReport.js');
 
 module.exports = async (client, interaction) => {
     const instance = client.getInstance(interaction.guildId);
@@ -1061,6 +1065,80 @@ module.exports = async (client, interaction) => {
 
         await DiscordMessages.sendTrackerMessage(guildId, ids.trackerId, interaction);
     }
+    else if (interaction.customId.startsWith('TrackerReport')) {
+        const ids = JSON.parse(interaction.customId.replace('TrackerReport', ''));
+        const tracker = instance.trackers[ids.trackerId];
+
+        if (!tracker) {
+            await interaction.message.delete();
+            return;
+        }
+
+        await interaction.deferReply({ flags: Discord.MessageFlags.Ephemeral });
+
+        const playerIds = tracker.players
+            .map(player => player.playerId)
+            .filter(playerId => playerId !== null && playerId !== undefined);
+        const uniquePlayerIds = [...new Set(playerIds)];
+
+        if (uniquePlayerIds.length === 0) {
+            const str = client.intlGet(guildId, 'noGroupOfflineData');
+            await client.interactionEditReply(interaction, DiscordEmbeds.getActionInfoEmbed(1, str));
+            return;
+        }
+
+        const days = 30;
+        const timezone = 'Europe/Vilnius';
+        const bmInstance = client.battlemetricsInstances[tracker.battlemetricsId];
+        const reportServerId = bmInstance && bmInstance.server_ip && bmInstance.server_port ?
+            `${bmInstance.server_ip}-${bmInstance.server_port}` : tracker.serverId;
+        const result = TrackerActivityReport.buildTrackerActivityReport(
+            PlayerActivityDB,
+            uniquePlayerIds,
+            reportServerId,
+            guildId,
+            days,
+            timezone,
+            bmInstance ? bmInstance.players : {});
+
+        let description = `__**${client.intlGet(guildId, 'tracker')}:**__ ${tracker.name}\n`;
+        description += `__**${client.intlGet(guildId, 'serverId')}:**__ ${reportServerId}\n`;
+        description += `__**${client.intlGet(guildId, 'timezone')}:**__ ${timezone} | `;
+        description += `${client.intlGet(guildId, 'days')}: ${days}\n`;
+
+        const groupValue = formatGroupRaidReport(result.group);
+
+        const embed = DiscordEmbeds.getEmbed({
+            title: 'Activity Report',
+            color: Constants.COLOR_DEFAULT,
+            description,
+            footer: { text: tracker.title }
+        });
+
+        embed.addFields({
+            name: 'Group Best Raid Time',
+            value: groupValue,
+            inline: false
+        });
+
+        for (const player of result.players.slice(0, 8)) {
+            embed.addFields({
+                name: `${player.isOnline ? Constants.ONLINE_EMOJI : Constants.OFFLINE_EMOJI} ${player.name}`,
+                value: formatPlayerActivityReport(player),
+                inline: false
+            });
+        }
+
+        if (result.players.length > 8) {
+            embed.addFields({
+                name: '\u200B',
+                value: `And ${result.players.length - 8} more player(s).`,
+                inline: false
+            });
+        }
+
+        await client.interactionEditReply(interaction, { embeds: [embed] });
+    }
     else if (interaction.customId.startsWith('TrackerEdit')) {
         const ids = JSON.parse(interaction.customId.replace('TrackerEdit', ''));
         const tracker = instance.trackers[ids.trackerId];
@@ -1141,4 +1219,47 @@ module.exports = async (client, interaction) => {
     client.log(client.intlGet(null, 'infoCap'), client.intlGet(null, 'userButtonInteractionSuccess', {
         id: `${verifyId}`
     }));
+}
+
+function formatGroupRaidReport(group) {
+    if (!group.reliable) {
+        return 'Collecting data. Need at least 2 players with 3+ sessions and about 24-72h observed each.\n' +
+            `Current: ${group.playersAnalyzed}/${group.playerCount} reliable players, ` +
+            `${group.totalSessions} total session(s), confidence ${group.confidence}%.`;
+    }
+
+    return group.windows.map((window, index) => {
+        const risk = Math.round(window.risk * 100);
+        return `**${index + 1}.** ${TrackerActivityReport.formatHourRange(window)} ` +
+            `| confidence ${window.confidence}% | online risk ${risk}%`;
+    }).join('\n');
+}
+
+function formatPlayerActivityReport(player) {
+    const lines = [
+        `24h: ${TrackerActivityReport.formatDuration(player.totals.h24)} | ` +
+            `7d: ${TrackerActivityReport.formatDuration(player.totals.d7)} | ` +
+            `30d: ${TrackerActivityReport.formatDuration(player.totals.d30)}`,
+        `Sessions (7d): ${player.sessions7d} | Data confidence: ${player.confidence}%`,
+        `Last connected: ${formatDiscordTime(player.lastConnected)}`,
+        `Last disconnected: ${formatDiscordTime(player.lastDisconnected)}`,
+        `Last seen: ${formatDiscordTime(player.lastSeen)}`
+    ];
+
+    if (player.likelySleep && player.likelyPlaying) {
+        lines.push(`Likely sleep: ${TrackerActivityReport.formatHourRange(player.likelySleep)}`);
+        lines.push(`Likely playing: ${TrackerActivityReport.formatHourRange(player.likelyPlaying)}`);
+        lines.push(`Peak hours: ${player.peakHours.map(TrackerActivityReport.formatHour).join(', ')}`);
+    }
+    else {
+        lines.push('Likely sleep/play: collecting more data');
+    }
+
+    return lines.join('\n');
+}
+
+function formatDiscordTime(timestamp) {
+    if (!timestamp) return 'unknown';
+    const seconds = Math.floor(timestamp / 1000);
+    return `<t:${seconds}:f> (<t:${seconds}:R>)`;
 }

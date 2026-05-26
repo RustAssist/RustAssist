@@ -446,6 +446,11 @@ module.exports = {
                     style: tracker.everyone ? SUCCESS : DANGER
                 }),
                 module.exports.getButton({
+                    customId: `TrackerReport${identifier}`,
+                    label: 'REPORT',
+                    style: SECONDARY
+                }),
+                module.exports.getButton({
                     customId: `TrackerUpdate${identifier}`,
                     label: Client.client.intlGet(guildId, 'updateCap'),
                     style: PRIMARY
