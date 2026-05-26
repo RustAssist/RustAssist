@@ -1103,20 +1103,23 @@ module.exports = async (client, interaction) => {
 
         let description = `__**${client.intlGet(guildId, 'tracker')}:**__ ${tracker.name}\n`;
         description += `__**${client.intlGet(guildId, 'serverId')}:**__ ${reportServerId}\n`;
-        description += `__**${client.intlGet(guildId, 'timezone')}:**__ ${timezone} | `;
-        description += `${client.intlGet(guildId, 'days')}: ${days}\n`;
+        description += `🕒 **Window:** ${days}d | ${timezone}\n`;
+        description += `👥 **Players:** ${result.group.playerCount} | `;
+        description += `📊 **Reliable:** ${result.group.playersAnalyzed}/${result.group.playerCount}\n`;
 
         const groupValue = formatGroupRaidReport(result.group);
 
         const embed = DiscordEmbeds.getEmbed({
-            title: 'Activity Report',
+            title: '📋 Activity Report',
             color: Constants.COLOR_DEFAULT,
             description,
-            footer: { text: tracker.title }
+            thumbnail: `${tracker.img}`,
+            footer: { text: `${tracker.title} | Today's activity window | ${result.group.playerCount} player(s)` },
+            timestamp: true
         });
 
         embed.addFields({
-            name: 'Group Best Raid Time',
+            name: '🎯 Group Best Raid Time',
             value: groupValue,
             inline: false
         });
@@ -1223,37 +1226,42 @@ module.exports = async (client, interaction) => {
 
 function formatGroupRaidReport(group) {
     if (!group.reliable) {
-        return 'Collecting data. Need at least 2 players with 3+ sessions and about 24-72h observed each.\n' +
-            `Current: ${group.playersAnalyzed}/${group.playerCount} reliable players, ` +
-            `${group.totalSessions} total session(s), confidence ${group.confidence}%.`;
+        return '> 🧪 **Collecting data**\n' +
+            '> Need **2+ reliable players** with several sessions and 24-72h observed.\n' +
+            `> 📊 Reliable: **${group.playersAnalyzed}/${group.playerCount}** | ` +
+            `🔁 Sessions: **${group.totalSessions}** | ` +
+            `🎚️ Confidence: **${group.confidence}%**`;
     }
 
     return group.windows.map((window, index) => {
         const risk = Math.round(window.risk * 100);
-        return `**${index + 1}.** ${TrackerActivityReport.formatHourRange(window)} ` +
-            `| confidence ${window.confidence}% | online risk ${risk}%`;
+        return `> **${index + 1}.** 💤 **${TrackerActivityReport.formatHourRange(window)}** ` +
+            `| 🎚️ ${window.confidence}% | ⚠️ online risk ${risk}%`;
     }).join('\n');
 }
 
 function formatPlayerActivityReport(player) {
     const lines = [
-        `24h: ${TrackerActivityReport.formatDuration(player.totals.h24)} | ` +
-            `7d: ${TrackerActivityReport.formatDuration(player.totals.d7)} | ` +
-            `30d: ${TrackerActivityReport.formatDuration(player.totals.d30)}`,
-        `Sessions (7d): ${player.sessions7d} | Data confidence: ${player.confidence}%`,
-        `Last connected: ${formatDiscordTime(player.lastConnected)}`,
-        `Last disconnected: ${formatDiscordTime(player.lastDisconnected)}`,
-        `Last seen: ${formatDiscordTime(player.lastSeen)}`
+        `> ⏱️ **24h:** ${TrackerActivityReport.formatDuration(player.totals.h24)} ` +
+            `| 📅 **7d:** ${TrackerActivityReport.formatDuration(player.totals.d7)} ` +
+            `| 🗓️ **30d:** ${TrackerActivityReport.formatDuration(player.totals.d30)}`,
+        `> 🔁 **Sessions (7d):** ${player.sessions7d} | 🎚️ **Data:** ${player.confidence}%`,
+        `> 🔗 **Connected:** ${formatDiscordTime(player.lastConnected)}`,
+        `> 🔴 **Disconnected:** ${formatDiscordTime(player.lastDisconnected)}`,
+        `> 👁️ **Last seen:** ${formatDiscordTime(player.lastSeen)}`
     ];
 
     if (player.likelySleep && player.likelyPlaying) {
-        lines.push(`Likely sleep: ${TrackerActivityReport.formatHourRange(player.likelySleep)}`);
-        lines.push(`Likely playing: ${TrackerActivityReport.formatHourRange(player.likelyPlaying)}`);
-        lines.push(`Peak hours: ${player.peakHours.map(TrackerActivityReport.formatHour).join(', ')}`);
+        lines.push(`> 💤 **Likely sleep:** ${TrackerActivityReport.formatHourRange(player.likelySleep)}`);
+        lines.push(`> 🎮 **Likely playing:** ${TrackerActivityReport.formatHourRange(player.likelyPlaying)}`);
+        lines.push(`> 🔥 **Peak hours:** ${player.peakHours.map(TrackerActivityReport.formatHour).join(', ')}`);
     }
     else {
-        lines.push('Likely sleep/play: collecting more data');
+        lines.push('> 🧪 **Likely sleep/play:** collecting more data');
     }
+
+    lines.push(`> 📊 **Today:** \`${TrackerActivityReport.formatHourlySparkline(player.todayHourMinutes)}\``);
+    lines.push('> `00-11        12-23`');
 
     return lines.join('\n');
 }

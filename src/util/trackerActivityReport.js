@@ -13,6 +13,8 @@ function buildTrackerActivityReport(db, bmIds, serverId, guildId, days, timezone
         const playerInfo = db.getPlayerInfo(bmId, serverId, guildId);
         const bmPlayer = bmPlayers[bmId] || {};
         const hourMinutes = computeOnlineMinutesPerHour(sessions, tzOffsetMs);
+        const todayHourMinutes = computeOnlineMinutesPerHour(
+            clipSessions(sessions, getLocalDayStartMs(nowMs, tzOffsetMs), nowMs), tzOffsetMs);
         const observedHours = getObservedHours(events, cutoffMs, nowMs);
         const sessions7d = sessions.filter(([start, end]) => end >= nowMs - 7 * 24 * 60 * 60 * 1000).length;
         const confidence = getPlayerConfidence(events.length, sessions.length, observedHours);
@@ -40,6 +42,7 @@ function buildTrackerActivityReport(db, bmIds, serverId, guildId, days, timezone
                 bestWindow(hourMinutes, 5, true) : null,
             peakHours: confidence >= MIN_RELIABLE_PLAYER_CONFIDENCE ?
                 topHours(hourMinutes, 3) : [],
+            todayHourMinutes,
             activeProbByHour: toActiveProbability(hourMinutes, observedHours)
         });
     }
@@ -106,6 +109,16 @@ function computeOnlineMinutesPerHour(sessions, tzOffsetMs) {
         distributeSession(startMs, endMs, onlineMinutes, tzOffsetMs);
     }
     return onlineMinutes;
+}
+
+function clipSessions(sessions, windowStart, windowEnd) {
+    return sessions
+        .map(([start, end]) => [Math.max(start, windowStart), Math.min(end, windowEnd)])
+        .filter(([start, end]) => end > start);
+}
+
+function getLocalDayStartMs(nowMs, tzOffsetMs) {
+    return Math.floor((nowMs + tzOffsetMs) / 86400000) * 86400000 - tzOffsetMs;
 }
 
 function distributeSession(startMs, endMs, onlineMinutes, tzOffsetMs) {
@@ -231,6 +244,17 @@ function formatHourRange(window) {
     return `${formatHour(window.startHour)} - ${formatHour(window.endHour)}`;
 }
 
+function formatHourlySparkline(hourMinutes) {
+    const chars = hourMinutes.map(minutes => {
+        if (minutes >= 45) return '█';
+        if (minutes >= 20) return '▓';
+        if (minutes > 0) return '▒';
+        return '░';
+    });
+
+    return `${chars.slice(0, 12).join('')} ${chars.slice(12).join('')}`;
+}
+
 function parseOffsetToMs(offsetStr) {
     const match = offsetStr.match(/^([+-])(\d{2}):(\d{2})$/);
     if (!match) return 0;
@@ -258,5 +282,6 @@ module.exports = {
     buildTrackerActivityReport,
     formatDuration,
     formatHour,
-    formatHourRange
+    formatHourRange,
+    formatHourlySparkline
 };

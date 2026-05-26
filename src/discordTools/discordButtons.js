@@ -447,8 +447,8 @@ module.exports = {
                 }),
                 module.exports.getButton({
                     customId: `TrackerReport${identifier}`,
-                    label: 'REPORT',
-                    style: SECONDARY
+                    label: '📋 REPORT',
+                    style: PRIMARY
                 }),
                 module.exports.getButton({
                     customId: `TrackerUpdate${identifier}`,
