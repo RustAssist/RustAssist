@@ -306,7 +306,7 @@
     "commandsWhitelistRemoveDesc": "Remove user from the whitelist.",
     "commandsWhitelistShowDesc": "Show whitelisted users.",
     "commandsWhitelistSteamidDesc": "The steamid of the user.",
-    "commandsVoiceBotJoinedVoice": "The Bot has joined the Voicechannel",
+    "commandsVoiceBotJoinedVoice": "The Bot has joined the Voice channel",
     "commandsVoiceBotLeftVoice": "The Bot has left the Voicechannel",
     "commandsVoiceDesc": "Bot Voice Commands",
     "commandsVoiceFemale": "Female",
