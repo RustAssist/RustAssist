@@ -372,8 +372,8 @@ Subcommand | Options | Description | Required
 
 Subcommand | Options | Description | Required
 ---------- | ------- | ----------- | --------
-`join` | &nbsp; | Bot Joins a Voicechannel. | &nbsp;
-`leave` | &nbsp; | Bot Leaves a Voicechannel. | &nbsp;
+`join` | &nbsp; | Bot Joins a Voice channel. | &nbsp;
+`leave` | &nbsp; | Bot Leaves a Voice channel. | &nbsp;
 
 ![Discord Slash Command uptime Image](images/slash_commands/voice.png)
 
