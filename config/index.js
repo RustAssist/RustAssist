@@ -33,5 +33,15 @@ module.exports = {
     },
     battlemetrics: {
         token: process.env.RPP_BATTLEMETRICS_TOKEN || '',
+    },
+    streamDeck: {
+        enabled: process.env.RPP_STREAM_DECK_ENABLED === 'true',
+        host: process.env.RPP_STREAM_DECK_HOST || 'localhost',
+        port: process.env.RPP_STREAM_DECK_PORT || 8074,
+        /* Per-guild passwords. Examples:
+           RPP_STREAM_DECK_API_PASSWORDS='1134548581378961473=pass1,1033084565323001867=pass2'
+           RPP_STREAM_DECK_API_PASSWORDS='{"1134548581378961473":"pass1","1033084565323001867":"pass2"}'
+        */
+        apiPasswords: process.env.RPP_STREAM_DECK_API_PASSWORDS || '',
     }
 };
