@@ -68,6 +68,9 @@ async function messageBroadcastTeamChanged(rustplus, client, message) {
     const changed = rustplus.team.isLeaderSteamIdChanged(message.broadcast.teamChanged.teamInfo);
     rustplus.team.updateTeam(message.broadcast.teamChanged.teamInfo);
     if (changed) rustplus.updateLeaderRustPlusLiteInstance();
+    if (client.streamDeckBridge) {
+        client.streamDeckBridge.broadcastSnapshot(rustplus.guildId, ['server'], 'immediate_update');
+    }
 }
 
 async function messageBroadcastTeamMessage(rustplus, client, message) {
@@ -133,13 +136,21 @@ async function messageBroadcastEntityChanged(rustplus, client, message) {
     const entityId = message.broadcast.entityChanged.entityId;
 
     if (instance.serverList[rustplus.serverId].switches.hasOwnProperty(entityId)) {
-        messageBroadcastEntityChangedSmartSwitch(rustplus, client, message);
+        await messageBroadcastEntityChangedSmartSwitch(rustplus, client, message);
     }
     else if (instance.serverList[rustplus.serverId].alarms.hasOwnProperty(entityId)) {
-        messageBroadcastEntityChangedSmartAlarm(rustplus, client, message);
+        await messageBroadcastEntityChangedSmartAlarm(rustplus, client, message);
     }
     else if (instance.serverList[rustplus.serverId].storageMonitors.hasOwnProperty(entityId)) {
-        messageBroadcastEntityChangedStorageMonitor(rustplus, client, message);
+        await messageBroadcastEntityChangedStorageMonitor(rustplus, client, message);
+    }
+
+    if (client.streamDeckBridge) {
+        client.streamDeckBridge.broadcastSnapshot(
+            rustplus.guildId,
+            ['switches', 'alarms', 'switchgroups'],
+            'immediate_update'
+        );
     }
 }
 

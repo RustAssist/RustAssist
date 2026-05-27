@@ -29,6 +29,11 @@ const DiscordSelectMenus = require('./discordSelectMenus.js');
 const DiscordTools = require('./discordTools.js');
 const Scrape = require('../util/scrape.js');
 
+function broadcastStreamDeck(guildId, endpoints) {
+    if (!Client.client.streamDeckBridge) return;
+    Client.client.streamDeckBridge.broadcastSnapshot(guildId, endpoints, 'immediate_update');
+}
+
 module.exports = {
     sendMessage: async function (guildId, content, messageId, channelId, interaction = null) {
         if (interaction) {
@@ -94,6 +99,7 @@ module.exports = {
     sendSmartSwitchMessage: async function (guildId, serverId, entityId, interaction = null) {
         const instance = Client.client.getInstance(guildId);
         const entity = instance.serverList[serverId].switches[entityId];
+        broadcastStreamDeck(guildId, ['switches', 'switchgroups']);
 
         const content = {
             embeds: [entity.reachable ?
@@ -120,6 +126,7 @@ module.exports = {
     sendSmartAlarmMessage: async function (guildId, serverId, entityId, interaction = null) {
         const instance = Client.client.getInstance(guildId);
         const entity = instance.serverList[serverId].alarms[entityId];
+        broadcastStreamDeck(guildId, ['alarms']);
 
         const content = {
             embeds: [entity.reachable ?
@@ -169,6 +176,7 @@ module.exports = {
     sendSmartSwitchGroupMessage: async function (guildId, serverId, groupId, interaction = null) {
         const instance = Client.client.getInstance(guildId);
         const group = instance.serverList[serverId].switchGroups[groupId];
+        broadcastStreamDeck(guildId, ['switches', 'switchgroups']);
 
         const content = {
             embeds: [DiscordEmbeds.getSmartSwitchGroupEmbed(guildId, serverId, groupId)],

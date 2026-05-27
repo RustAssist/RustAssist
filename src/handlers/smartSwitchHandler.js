@@ -23,6 +23,15 @@ const Map = require('../util/map.js');
 const SmartSwitchGroupHandler = require('./smartSwitchGroupHandler.js');
 const Timer = require('../util/timer');
 
+function broadcastSmartSwitchState(client, guildId) {
+    if (!client.streamDeckBridge) return;
+    client.streamDeckBridge.broadcastSnapshot(
+        guildId,
+        ['switches', 'switchgroups'],
+        'immediate_update'
+    );
+}
+
 module.exports = {
     handler: async function (rustplus, client, time) {
         const instance = client.getInstance(rustplus.guildId);
@@ -519,7 +528,7 @@ module.exports = {
             value: active
         }));
 
-        module.exports.smartSwitchCommandTurnOnOff(rustplus, client, entityId, active);
+        await module.exports.smartSwitchCommandTurnOnOff(rustplus, client, entityId, active);
 
         if (!switches[entityId].reachable) return true;
 
@@ -566,6 +575,7 @@ module.exports = {
         const prevActive = switches[entityId].active;
         switches[entityId].active = active;
         client.setInstance(guildId, instance);
+        broadcastSmartSwitchState(client, guildId);
 
         rustplus.interactionSwitches.push(entityId);
 
@@ -586,6 +596,7 @@ module.exports = {
             switches[entityId].reachable = true;
         }
         client.setInstance(guildId, instance);
+        broadcastSmartSwitchState(client, guildId);
 
         DiscordMessages.sendSmartSwitchMessage(guildId, serverId, entityId);
         SmartSwitchGroupHandler.updateSwitchGroupIfContainSwitch(client, guildId, serverId, entityId);

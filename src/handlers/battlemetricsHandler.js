@@ -172,6 +172,10 @@ module.exports = {
 
                 await DiscordMessages.sendTrackerMessage(guildId, trackerId);
             }
+
+            if (client.streamDeckBridge) {
+                client.streamDeckBridge.broadcastSnapshot(guildId, ['trackers', 'pop']);
+            }
         }
 
         if (client.battlemetricsIntervalCounter === 29) {

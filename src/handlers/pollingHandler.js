@@ -97,5 +97,12 @@ module.exports = {
         await InformationHandler.handler(rustplus);
         await StorageMonitorHandler.handler(rustplus, client);
         await SmartAlarmHandler.handler(rustplus, client);
+
+        if (client.streamDeckBridge) {
+            client.streamDeckBridge.broadcastSnapshot(
+                rustplus.guildId,
+                ['server', 'time', 'pop', 'switches', 'alarms', 'switchgroups']
+            );
+        }
     },
 };

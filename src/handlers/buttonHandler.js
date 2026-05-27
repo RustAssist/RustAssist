@@ -656,6 +656,13 @@ module.exports = async (client, interaction) => {
         const prevActive = server.switches[ids.entityId].active;
         server.switches[ids.entityId].active = active;
         client.setInstance(guildId, instance);
+        if (client.streamDeckBridge) {
+            client.streamDeckBridge.broadcastSnapshot(
+                guildId,
+                ['switches', 'switchgroups'],
+                'immediate_update'
+            );
+        }
 
         rustplus.interactionSwitches.push(ids.entityId);
 
@@ -673,6 +680,13 @@ module.exports = async (client, interaction) => {
         else {
             server.switches[ids.entityId].reachable = true;
             client.setInstance(guildId, instance);
+        }
+        if (client.streamDeckBridge) {
+            client.streamDeckBridge.broadcastSnapshot(
+                guildId,
+                ['switches', 'switchgroups'],
+                'immediate_update'
+            );
         }
 
         if (instance.generalSettings.smartSwitchNotifyInGameWhenChangedFromDiscord) {

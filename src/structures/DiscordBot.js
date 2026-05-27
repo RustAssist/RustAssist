@@ -34,6 +34,7 @@ const Logger = require('./Logger.js');
 const PermissionHandler = require('../handlers/permissionHandler.js');
 const RustLabs = require('../structures/RustLabs');
 const RustPlus = require('../structures/RustPlus');
+const StreamDeckBridge = require('../util/streamDeckBridge.js');
 
 class DiscordBot extends Discord.Client {
     constructor(props) {
@@ -72,6 +73,7 @@ class DiscordBot extends Discord.Client {
         this.battlemetricsIntervalCounter = 0;
 
         this.voiceLeaveTimeouts = new Object();
+        this.streamDeckBridge = new StreamDeckBridge(this);
 
         this.loadDiscordCommands();
         this.loadDiscordEvents();
@@ -187,6 +189,10 @@ class DiscordBot extends Discord.Client {
                 } break;
             }
         });
+    }
+
+    startStreamDeckBridge() {
+        if (this.streamDeckBridge) this.streamDeckBridge.start();
     }
 
     log(title, text, level = 'info') {

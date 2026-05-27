@@ -43,6 +43,7 @@
         "translate": "^1.4.1",
         "ts-node": "^10.9.2",
         "typescript": "^5.8.3",
+        "ws": "^8.19.0",
         "winston": "^3.8.2"
     },
     "devDependencies": {
