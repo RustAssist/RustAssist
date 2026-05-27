@@ -18,7 +18,7 @@ class StreamDeckBridge {
         this.enabled = this.config.enabled !== false;
         this.host = this.config.host || 'localhost';
         this.port = parseInt(this.config.port || 8074);
-        this.apiPassword = this.config.apiPassword || '';
+        this.apiPasswords = this.parseApiPasswords(this.config.apiPasswords || '');
         this.server = null;
         this.wss = null;
         this.wsClients = new Map();
@@ -31,10 +31,11 @@ class StreamDeckBridge {
         this.wss = new WebSocketServer({ server: this.server });
 
         this.wss.on('connection', (ws, request) => {
-            const query = Url.parse(request.url, true).query;
+            const parsed = Url.parse(request.url, true);
+            const requestPath = this.normalizeRequestPath(parsed.pathname, parsed.query.guildId);
             this.wsClients.set(ws, {
-                authenticated: this.isAuthorizedRequest(request, query),
-                guildId: this.resolveGuildId(query.guildId),
+                authenticated: false,
+                guildId: requestPath.guildId,
                 endpoints: DEFAULT_ENDPOINTS
             });
 
@@ -75,7 +76,7 @@ class StreamDeckBridge {
             return;
         }
 
-        if (!this.isAuthorizedRequest(req, parsed.query)) {
+        if (!this.isAuthorizedRequest(req, parsed.query, requestPath.guildId)) {
             this.sendJson(res, 401, { error: 'Unauthorized' });
             return;
         }
@@ -103,7 +104,7 @@ class StreamDeckBridge {
         const cleanPath = (pathname || '/').replace(/\/+$/, '') || '/';
         const segments = cleanPath.split('/').filter(Boolean);
 
-        if (segments.length > 0 && this.client.instances.hasOwnProperty(segments[0])) {
+        if (segments.length > 0 && this.isGuildIdSegment(segments[0])) {
             const withoutGuild = `/${segments.slice(1).join('/')}`.replace(/\/+$/, '') || '/';
             return {
                 guildId: this.resolveGuildId(segments[0]),
@@ -112,7 +113,7 @@ class StreamDeckBridge {
         }
 
         return {
-            guildId: this.resolveGuildId(queryGuildId),
+            guildId: queryGuildId ? this.resolveGuildId(queryGuildId) : null,
             pathname: cleanPath
         };
     }
@@ -122,7 +123,16 @@ class StreamDeckBridge {
             this.sendJson(res, 200, {
                 ok: true,
                 guildId,
-                websocketClients: this.wsClients.size
+                websocketClients: this.wsClients.size,
+                guilds: this.getBridgeGuilds()
+            });
+            return;
+        }
+
+        if (!guildId) {
+            this.sendJson(res, 400, {
+                error: 'Guild id required',
+                example: `http://${this.host}:${this.port}/<guildId>`
             });
             return;
         }
@@ -147,6 +157,11 @@ class StreamDeckBridge {
     }
 
     async handlePost(pathname, guildId, res) {
+        if (!guildId) {
+            this.sendJson(res, 400, { error: 'Guild id required' });
+            return;
+        }
+
         const switchMatch = pathname.match(/^\/switches\/([^/]+)\/toggle$/);
         if (switchMatch) {
             await this.toggleSwitch(guildId, decodeURIComponent(switchMatch[1]));
@@ -178,8 +193,15 @@ class StreamDeckBridge {
 
         if (!message || message.type !== 'subscribe') return;
 
+        const guildId = this.resolveGuildId(message.guildId);
+        if (!guildId) {
+            ws.close(1008, 'Guild id required');
+            return;
+        }
+
         const current = this.wsClients.get(ws) || {};
-        const authenticated = current.authenticated || this.isAuthorizedPassword(message.apiPassword);
+        const authenticated = (current.authenticated && current.guildId === guildId) ||
+            this.isAuthorizedPassword(message.apiPassword, guildId);
         if (!authenticated) {
             ws.close(1008, 'Unauthorized');
             return;
@@ -189,7 +211,6 @@ class StreamDeckBridge {
             ? message.endpoints.map(endpoint => `${endpoint}`)
             : DEFAULT_ENDPOINTS;
 
-        const guildId = this.resolveGuildId(message.guildId);
         this.wsClients.set(ws, { authenticated, guildId, endpoints });
         ws.send(JSON.stringify({
             type: 'subscribed',
@@ -439,27 +460,76 @@ class StreamDeckBridge {
 
     resolveGuildId(guildId) {
         if (guildId && guildId !== 'default') return `${guildId}`;
-
-        const activeGuildId = Object.keys(this.client.instances)
-            .find(id => this.client.instances[id] && this.client.instances[id].activeServer !== null);
-        if (activeGuildId) return activeGuildId;
-
-        return Object.keys(this.client.instances)[0] || null;
+        return null;
     }
 
-    isAuthorizedRequest(req, query = {}) {
-        if (!this.apiPassword) return true;
+    getBridgeGuilds() {
+        return Object.keys(this.client.instances || {}).map(guildId => {
+            const context = this.getContext(guildId);
+            return {
+                guildId,
+                activeServer: context.instance ? context.instance.activeServer : null,
+                connected: context.connected,
+                protected: Boolean(this.getApiPassword(guildId))
+            };
+        });
+    }
+
+    isGuildIdSegment(value) {
+        return /^\d{15,25}$/.test(`${value || ''}`) ||
+            Object.prototype.hasOwnProperty.call(this.client.instances || {}, value);
+    }
+
+    parseApiPasswords(value) {
+        if (!value) return {};
+        if (typeof value === 'object') return value;
+
+        const text = `${value}`.trim();
+        if (!text) return {};
+
+        if (text.startsWith('{')) {
+            try {
+                const parsed = JSON.parse(text);
+                return parsed && typeof parsed === 'object' ? parsed : {};
+            }
+            catch (error) {
+                this.log('warning', `Invalid RPP_STREAM_DECK_API_PASSWORDS JSON: ${error.message}`);
+                return {};
+            }
+        }
+
+        return text.split(/[;,]/).reduce((acc, entry) => {
+            const separator = entry.includes('=') ? '=' : ':';
+            const index = entry.indexOf(separator);
+            if (index <= 0) return acc;
+
+            const guildId = entry.slice(0, index).trim();
+            const password = entry.slice(index + 1).trim();
+            if (guildId && password) acc[guildId] = password;
+            return acc;
+        }, {});
+    }
+
+    getApiPassword(guildId) {
+        const resolvedGuildId = this.resolveGuildId(guildId);
+        return resolvedGuildId ? this.apiPasswords[resolvedGuildId] : '';
+    }
+
+    isAuthorizedRequest(req, query = {}, guildId = null) {
+        const apiPassword = this.getApiPassword(guildId);
+        if (!apiPassword) return true;
 
         const headerKey = req.headers['x-api-key'];
         const authHeader = req.headers.authorization || '';
-        return this.isAuthorizedPassword(headerKey) ||
-            this.isAuthorizedPassword(query.apiPassword) ||
-            authHeader === `Bearer ${this.apiPassword}`;
+        return this.isAuthorizedPassword(headerKey, guildId) ||
+            this.isAuthorizedPassword(query.apiPassword, guildId) ||
+            authHeader === `Bearer ${apiPassword}`;
     }
 
-    isAuthorizedPassword(value) {
-        if (!this.apiPassword) return true;
-        return typeof value === 'string' && value === this.apiPassword;
+    isAuthorizedPassword(value, guildId = null) {
+        const apiPassword = this.getApiPassword(guildId);
+        if (!apiPassword) return true;
+        return typeof value === 'string' && value === apiPassword;
     }
 
     setCommonHeaders(res) {
