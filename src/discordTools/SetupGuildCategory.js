@@ -34,7 +34,7 @@ module.exports = async (client, guild) => {
         }
     }
     if (category === undefined) {
-        category = await DiscordTools.addCategory(guild.id, 'N0rth++', perms);
+        category = await DiscordTools.addCategory(guild.id, 'RustAssist', perms);
         if (!category) {
             return undefined;
         }
