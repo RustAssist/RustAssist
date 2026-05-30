@@ -106,6 +106,10 @@ Production license/fleet mode uses these environment variables:
 
 `RPP_LICENSE_BYPASS=true` is for local development only.
 
+This repository includes a minimal central API at `services/license-api`. It uses FastAPI, SQLAlchemy and SQLite by default. For the first bot, set `RPP_BOT_INSTANCE_ID` to the same value as `LICENSE_API_BOOTSTRAP_INSTANCE_ID`, and set `RPP_BOT_INSTANCE_TOKEN` to the same value as `LICENSE_API_BOOTSTRAP_INSTANCE_TOKEN`.
+
+To create manual license keys, run the API and call `POST /admin/licenses` with `X-Admin-Token: <LICENSE_API_ADMIN_TOKEN>`. See `services/license-api/README.md` for examples.
+
 ## **Thanks to**
 
 **liamcottle**@GitHub - for the [rustplus.js](https://github.com/liamcottle/rustplus.js) library.

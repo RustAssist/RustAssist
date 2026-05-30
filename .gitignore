@@ -1,4 +1,6 @@
 node_modules
+__pycache__
+.venv
 .env
 instances
 credentials
@@ -11,4 +13,8 @@ data/runtimeData.sqlite
 data/runtimeData.sqlite-shm
 data/runtimeData.sqlite-wal
 database
+license-api-data
+services/license-api/*.sqlite
+services/license-api/*.sqlite-shm
+services/license-api/*.sqlite-wal
 

@@ -1,10 +1,39 @@
 services:
+  license-api:
+    build: ./services/license-api
+    container_name: rustassist-license-api
+    environment:
+      - LICENSE_API_DATABASE_URL=sqlite:////data/license_api.sqlite
+      - LICENSE_API_ADMIN_TOKEN=CHANGE_ME_ADMIN_TOKEN
+      - LICENSE_API_BOOTSTRAP_INSTANCE_ID=rustassist-1
+      - LICENSE_API_BOOTSTRAP_INSTANCE_TOKEN=CHANGE_ME_INSTANCE_TOKEN
+      - LICENSE_API_BOOTSTRAP_INVITE_URL=INVITE_URL
+      - LICENSE_API_BOOTSTRAP_ACTIVE_GUILD_LIMIT=20
+      - LICENSE_API_HOST=0.0.0.0
+      - LICENSE_API_PORT=8000
+    volumes:
+      - ./license-api-data:/data
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
   rustplusbot:
-    image: ghcr.io/faithix/rustplusplus:master
+    build: .
+    image: rustassist:local
     container_name: rustplusbot
+    depends_on:
+      - license-api
     environment:
       - RPP_DISCORD_TOKEN=TOKEN
       - RPP_DISCORD_CLIENT_ID=CLIENT_ID
+      - RPP_LICENSE_REQUIRED=true
+      - RPP_LICENSE_API_URL=http://license-api:8000
+      - RPP_LICENSE_VALIDATION_GRACE_MS=86400000
+      - RPP_LICENSE_ACTIVATION_TIMEOUT_MS=900000
+      - RPP_BOT_INSTANCE_ID=rustassist-1
+      - RPP_BOT_INSTANCE_TOKEN=CHANGE_ME_INSTANCE_TOKEN
+      - RPP_BOT_INVITE_URL=INVITE_URL
+      - RPP_BOT_ACTIVE_GUILD_LIMIT=20
     volumes:
       - ./logs:/app/logs
       - ./instances:/app/instances
