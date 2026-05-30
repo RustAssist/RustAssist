@@ -21,11 +21,13 @@
 const Discord = require('discord.js');
 
 const DiscordEmbeds = require('../discordTools/discordEmbeds');
+const LicenseGuard = require('../util/licenseGuard.js');
 
 module.exports = {
     name: 'interactionCreate',
     async execute(client, interaction) {
         const instance = client.getInstance(interaction.guildId);
+        if (!instance && interaction.guildId) return;
 
         /* Check so that the interaction comes from valid channels */
         if (!Object.values(instance.channelId).includes(interaction.channelId) && !interaction.isCommand) {
@@ -39,6 +41,12 @@ module.exports = {
                         client.intlGet(null, 'couldNotDeferInteraction'), 'error');
                 }
             }
+        }
+
+        if (interaction.isButton() || interaction.isStringSelectMenu() ||
+                interaction.type === Discord.InteractionType.ApplicationCommand ||
+                interaction.type === Discord.InteractionType.ModalSubmit) {
+            if (!(await LicenseGuard.guardInteraction(client, interaction))) return;
         }
 
         if (interaction.isButton()) {

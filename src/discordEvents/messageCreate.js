@@ -20,14 +20,27 @@
 
 const DiscordCommandHandler = require('../handlers/discordCommandHandler.js');
 const DiscordTools = require('../discordTools/discordTools');
+const LicenseGuard = require('../util/licenseGuard.js');
 
 module.exports = {
     name: 'messageCreate',
     async execute(client, message) {
+        if (!message.guild) return;
+
         const instance = client.getInstance(message.guild.id);
         const rustplus = client.rustplusInstances[message.guild.id];
 
-        if (message.author.bot || !rustplus || (rustplus && !rustplus.isOperational)) return;
+        if (message.author.bot) return;
+        if (!instance) return;
+
+        if (message.channelId === instance.channelId.commands) {
+            if (!(await LicenseGuard.guardMessage(client, message))) return;
+        }
+        else if (message.channelId === instance.channelId.teamchat) {
+            if (!(await LicenseGuard.guardMessage(client, message, { feature: 'teamChat' }))) return;
+        }
+
+        if (!rustplus || (rustplus && !rustplus.isOperational)) return;
 
         if (instance.blacklist['discordIds'].includes(message.author.id) &&
             Object.values(instance.channelId).includes(message.channelId)) {

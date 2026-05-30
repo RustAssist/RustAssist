@@ -78,6 +78,34 @@ Make sure you use the correct values for DISCORD_CLIENT_ID as well as DISCORD_TO
 
 Optional: set `RPP_BATTLEMETRICS_TOKEN` to use an authenticated BattleMetrics API token. If it is empty or unset, BattleMetrics requests stay anonymous as before.
 
+## **Production storage**
+
+When hosting RustAssist, keep these paths persistent across restarts and image updates:
+
+* `instances/` - guild configuration, Discord channel/message ids, Rust server list, devices, trackers and cached license state.
+* `credentials/` - Rust+ pairing credentials.
+* `maps/` - generated map images.
+* `data/` - runtime state such as timer/map marker state in `runtimeData.sqlite`.
+* `database/` - player activity and history in `player_activity.db`.
+* `logs/` - diagnostic logs.
+
+`data/staticData.sqlite` is read-only application data. It only needs to exist in the deployed artifact/image; it does not need runtime backup or migration.
+
+## **License and fleet configuration**
+
+Production license/fleet mode uses these environment variables:
+
+* `RPP_LICENSE_REQUIRED=true`
+* `RPP_LICENSE_API_URL`
+* `RPP_LICENSE_VALIDATION_GRACE_MS`
+* `RPP_LICENSE_ACTIVATION_TIMEOUT_MS`
+* `RPP_BOT_INSTANCE_ID`
+* `RPP_BOT_INSTANCE_TOKEN`
+* `RPP_BOT_INVITE_URL`
+* `RPP_BOT_ACTIVE_GUILD_LIMIT`
+
+`RPP_LICENSE_BYPASS=true` is for local development only.
+
 ## **Thanks to**
 
 **liamcottle**@GitHub - for the [rustplus.js](https://github.com/liamcottle/rustplus.js) library.

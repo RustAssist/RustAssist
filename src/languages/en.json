@@ -930,5 +930,18 @@
     "whoisCurrentName": "Current Name",
     "whoisFirstSeen": "First Seen",
     "noNameHistoryData": "No name history available for {name}.",
-    "whoisNoData": "No whois data found for {name}."
+    "whoisNoData": "No whois data found for {name}.",
+    "commandsLicenseDesc": "Manage the RustAssist license for this Discord server.",
+    "commandsLicenseActivateDesc": "Activate a RustAssist license key.",
+    "commandsLicenseDeactivateDesc": "Deactivate the RustAssist license for this Discord server.",
+    "commandsLicenseStatusDesc": "Show RustAssist license status.",
+    "commandsLicenseKeyDesc": "License key.",
+    "licenseActivated": "RustAssist license activated. Plan: {plan}.",
+    "licenseActivationRejected": "This license cannot be activated on this bot. Use: {invite}",
+    "licenseApiUnavailable": "The RustAssist license service is temporarily unavailable. Please try again later.",
+    "licenseAssignedElsewhere": "This Discord server is assigned to another RustAssist instance. Use: {invite}",
+    "licenseCommandBlocked": "RustAssist is waiting for license activation. Use /license activate or /license status.",
+    "licenseDeactivated": "RustAssist license deactivated. The bot is back in activation-only mode.",
+    "licenseFeatureDisabled": "This feature is not enabled for the current RustAssist license plan.",
+    "licenseStatus": "License status: {status}. Plan: {plan}. Assigned instance: {assigned}."
 }

@@ -18,15 +18,11 @@
 
 */
 
+const FleetRouting = require('../util/fleetRouting.js');
+
 module.exports = {
     name: 'guildCreate',
     async execute(client, guild) {
-        require('../util/CreateInstanceFile')(client, guild);
-        require('../util/CreateCredentialsFile')(client, guild);
-        client.fcmListenersLite[guild.id] = new Object();
-
-        client.loadGuildIntl(guild.id);
-
-        await client.setupGuild(guild);
+        await FleetRouting.handleGuildCreate(client, guild);
     },
 }

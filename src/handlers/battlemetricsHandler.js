@@ -33,6 +33,8 @@ module.exports = {
 
         for (const guildItem of client.guilds.cache) {
             const guildId = guildItem[0];
+            if (!client.isGuildLicensed(guildId)) continue;
+
             const instance = client.getInstance(guildId);
             const rustplus = client.rustplusInstances[guildId];
 

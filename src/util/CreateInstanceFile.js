@@ -25,6 +25,43 @@ const Path = require('path');
 const InstanceUtils = require('../util/instanceUtils.js');
 const Constants = require('./constants.js');
 
+function getDefaultLicenseState() {
+    return {
+        status: 'unlicensed',
+        licenseId: null,
+        assignedBotInstanceId: null,
+        plan: 'unlicensed',
+        featureFlags: {},
+        limits: {},
+        expiresAt: null,
+        lastValidatedAt: null,
+        validationGraceExpiresAt: null,
+        activationStartedAt: null,
+        activationExpiresAt: null
+    };
+}
+
+function ensureLicenseState(instance) {
+    const defaults = getDefaultLicenseState();
+    if (!instance.hasOwnProperty('license') || typeof instance.license !== 'object' || instance.license === null) {
+        instance.license = defaults;
+        return;
+    }
+
+    for (const [key, value] of Object.entries(defaults)) {
+        if (!instance.license.hasOwnProperty(key)) {
+            instance.license[key] = value;
+        }
+    }
+
+    if (typeof instance.license.featureFlags !== 'object' || instance.license.featureFlags === null) {
+        instance.license.featureFlags = {};
+    }
+    if (typeof instance.license.limits !== 'object' || instance.license.limits === null) {
+        instance.license.limits = {};
+    }
+}
+
 module.exports = (client, guild) => {
     let instance = null;
     if (!Fs.existsSync(Path.join(__dirname, '..', '..', 'instances', `${guild.id}.json`))) {
@@ -72,7 +109,8 @@ module.exports = (client, guild) => {
             whitelist: {
                 steamIds: []
             },
-            aliases: []
+            aliases: [],
+            license: getDefaultLicenseState()
         };
     }
     else {
@@ -194,6 +232,7 @@ module.exports = (client, guild) => {
         }
         if (!instance.whitelist.hasOwnProperty('steamIds')) instance.whitelist['steamIds'] = [];
         if (!instance.hasOwnProperty('aliases')) instance.aliases = [];
+        ensureLicenseState(instance);
 
         for (const serverId of Object.keys(instance.serverList)) {
             if (!Object.keys(instance.serverListLite).includes(serverId)) {
@@ -208,6 +247,8 @@ module.exports = (client, guild) => {
             };
         }
     }
+
+    ensureLicenseState(instance);
 
     /* Check every serverList for missing keys */
     for (const [serverId, content] of Object.entries(instance.serverList)) {

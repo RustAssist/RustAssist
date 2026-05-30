@@ -146,18 +146,20 @@ async function addCredentials(client, interaction, verifyId) {
     InstanceUtils.writeCredentialsFile(guildId, credentials);
 
     /* Start Fcm Listener */
-    if (isHoster) {
-        require('../util/FcmListener')(client, DiscordTools.getGuild(interaction.guildId));
-        if (prevHoster !== null) {
-            require('../util/FcmListenerLite')(client, DiscordTools.getGuild(interaction.guildId), prevHoster);
+    if (client.isGuildLicensed(guildId)) {
+        if (isHoster) {
+            require('../util/FcmListener')(client, DiscordTools.getGuild(interaction.guildId));
+            if (prevHoster !== null) {
+                require('../util/FcmListenerLite')(client, DiscordTools.getGuild(interaction.guildId), prevHoster);
+            }
         }
-    }
-    else {
-        require('../util/FcmListenerLite')(client, DiscordTools.getGuild(interaction.guildId), steamId);
+        else {
+            require('../util/FcmListenerLite')(client, DiscordTools.getGuild(interaction.guildId), steamId);
 
-        const rustplus = client.rustplusInstances[guildId];
-        if (rustplus && rustplus.team.leaderSteamId === steamId) {
-            rustplus.updateLeaderRustPlusLiteInstance();
+            const rustplus = client.rustplusInstances[guildId];
+            if (rustplus && rustplus.team.leaderSteamId === steamId) {
+                rustplus.updateLeaderRustPlusLiteInstance();
+            }
         }
     }
 
@@ -288,9 +290,11 @@ async function setHosterCredentials(client, interaction, verifyId) {
         await DiscordMessages.sendServerMessage(guildId, rustplus.serverId);
     }
 
-    require('../util/FcmListener')(client, DiscordTools.getGuild(interaction.guildId));
-    if (prevHoster !== null) {
-        require('../util/FcmListenerLite')(client, DiscordTools.getGuild(interaction.guildId), prevHoster);
+    if (client.isGuildLicensed(guildId)) {
+        require('../util/FcmListener')(client, DiscordTools.getGuild(interaction.guildId));
+        if (prevHoster !== null) {
+            require('../util/FcmListenerLite')(client, DiscordTools.getGuild(interaction.guildId), prevHoster);
+        }
     }
 
     client.log(client.intlGet(null, 'infoCap'), client.intlGet(null, 'slashCommandValueChange', {

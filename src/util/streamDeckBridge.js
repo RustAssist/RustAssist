@@ -7,6 +7,7 @@ const Url = require('url');
 const { WebSocketServer, WebSocket } = require('ws');
 
 const Config = require('../../config');
+const LicenseGuard = require('./licenseGuard.js');
 const Timer = require('./timer.js');
 
 const DEFAULT_ENDPOINTS = ['server', 'time', 'pop', 'switches', 'alarms', 'switchgroups', 'trackers'];
@@ -137,6 +138,12 @@ class StreamDeckBridge {
             return;
         }
 
+        const guard = LicenseGuard.guardGuildFeature(this.client, guildId, 'streamDeck');
+        if (!guard.allowed) {
+            this.sendJson(res, 403, { error: guard.reason, message: guard.message });
+            return;
+        }
+
         const routes = {
             '/': () => this.getServerData(guildId),
             '/time': () => this.getTimeData(guildId),
@@ -162,8 +169,19 @@ class StreamDeckBridge {
             return;
         }
 
+        const guard = LicenseGuard.guardGuildFeature(this.client, guildId, 'streamDeck');
+        if (!guard.allowed) {
+            this.sendJson(res, 403, { error: guard.reason, message: guard.message });
+            return;
+        }
+
         const switchMatch = pathname.match(/^\/switches\/([^/]+)\/toggle$/);
         if (switchMatch) {
+            const deviceGuard = LicenseGuard.guardGuildFeature(this.client, guildId, 'deviceControls');
+            if (!deviceGuard.allowed) {
+                this.sendJson(res, 403, { error: deviceGuard.reason, message: deviceGuard.message });
+                return;
+            }
             await this.toggleSwitch(guildId, decodeURIComponent(switchMatch[1]));
             this.sendJson(res, 200, { ok: true });
             this.broadcastSnapshot(guildId, ['switches', 'switchgroups'], 'immediate_update');
@@ -172,6 +190,11 @@ class StreamDeckBridge {
 
         const groupMatch = pathname.match(/^\/switchgroups\/([^/]+)\/(on|off)$/);
         if (groupMatch) {
+            const deviceGuard = LicenseGuard.guardGuildFeature(this.client, guildId, 'deviceControls');
+            if (!deviceGuard.allowed) {
+                this.sendJson(res, 403, { error: deviceGuard.reason, message: deviceGuard.message });
+                return;
+            }
             await this.controlSwitchGroup(guildId, decodeURIComponent(groupMatch[1]), groupMatch[2] === 'on');
             this.sendJson(res, 200, { ok: true });
             this.broadcastSnapshot(guildId, ['switches', 'switchgroups'], 'immediate_update');
@@ -196,6 +219,12 @@ class StreamDeckBridge {
         const guildId = this.resolveGuildId(message.guildId);
         if (!guildId) {
             ws.close(1008, 'Guild id required');
+            return;
+        }
+
+        const guard = LicenseGuard.guardGuildFeature(this.client, guildId, 'streamDeck');
+        if (!guard.allowed) {
+            ws.close(1008, guard.message || 'License required');
             return;
         }
 

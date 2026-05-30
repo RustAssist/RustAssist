@@ -57,6 +57,13 @@ module.exports = {
 
         if (rustplus.isDeleted) return;
 
+        if (!client.isGuildLicensed(guildId)) {
+            delete client.rustplusInstances[guildId];
+            client.activeRustplusInstances[guildId] = false;
+            client.rustplusReconnecting[guildId] = false;
+            return;
+        }
+
         /* Was the disconnection unexpected? */
         if (client.activeRustplusInstances[guildId]) {
             if (!client.rustplusReconnecting[guildId]) {

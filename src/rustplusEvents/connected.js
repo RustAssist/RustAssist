@@ -26,6 +26,13 @@ const PollingHandler = require('../handlers/pollingHandler.js');
 module.exports = {
     name: 'connected',
     async execute(rustplus, client) {
+        if (!client.isGuildLicensed(rustplus.guildId)) {
+            rustplus.isDeleted = true;
+            rustplus.disconnect();
+            delete client.rustplusInstances[rustplus.guildId];
+            return;
+        }
+
         if (!rustplus.isServerAvailable()) return rustplus.deleteThisRustplusInstance();
 
         rustplus.log(client.intlGet(null, 'connectedCap'), client.intlGet(null, 'connectedToServer'));

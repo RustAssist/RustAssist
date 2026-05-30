@@ -23,15 +23,15 @@ const Path = require('path');
 
 const BattlemetricsHandler = require('../handlers/battlemetricsHandler.js');
 const Config = require('../../config');
+const FleetRouting = require('../util/fleetRouting.js');
+const LicenseMessages = require('../util/licenseMessages.js');
 
 module.exports = {
     name: 'clientReady',
     once: true,
     async execute(client) {
         for (const guild of client.guilds.cache) {
-            require('../util/CreateInstanceFile')(client, guild[1]);
-            require('../util/CreateCredentialsFile')(client, guild[1]);
-            client.fcmListenersLite[guild[0]] = new Object();
+            await FleetRouting.prepareGuildFiles(client, guild[1]);
         }
 
         client.loadGuildsIntl();
@@ -62,6 +62,50 @@ module.exports = {
 
         for (let guildArray of client.guilds.cache) {
             const guild = guildArray[1];
+            const licenseResult = await client.validateGuildLicense(guild);
+
+            if (!licenseResult.ok) {
+                if (client.isGuildLicensed(guild.id)) {
+                    /* Cached grace was applied by validateGuildLicense. */
+                }
+                else {
+                    await LicenseMessages.leaveGuildWithMessage(
+                        client,
+                        guild,
+                        'RustAssist license service is temporarily unavailable. Please invite the bot again later.',
+                        'ready-license-api-unavailable'
+                    );
+                    continue;
+                }
+            }
+
+            if (['duplicate', 'wrong_instance'].includes(licenseResult.action)) {
+                client.stopGuildWork(guild.id);
+                await LicenseMessages.leaveGuildWithMessage(
+                    client,
+                    guild,
+                    licenseResult.message || 'This Discord server is assigned to another RustAssist instance.',
+                    `ready-${licenseResult.action}`
+                );
+                continue;
+            }
+
+            if (licenseResult.license && licenseResult.license.assignedBotInstanceId &&
+                    licenseResult.license.assignedBotInstanceId !== Config.fleet.instanceId) {
+                client.stopGuildWork(guild.id);
+                await LicenseMessages.leaveGuildWithMessage(
+                    client,
+                    guild,
+                    licenseResult.message || 'This Discord server is assigned to another RustAssist instance.',
+                    'ready-wrong-instance'
+                );
+                continue;
+            }
+
+            if (!client.isGuildLicensed(guild.id)) {
+                await client.enterActivationOnlyMode(guild);
+                continue;
+            }
 
             try {
                 await guild.members.me.setNickname(Config.discord.username);
@@ -70,14 +114,13 @@ module.exports = {
                 client.log(client.intlGet(null, 'warningCap'), client.intlGet(null, 'ignoreSetNickname'));
             }
             await client.syncCredentialsWithUsers(guild);
-            await client.setupGuild(guild);
+            await client.startLicensedGuildWork(guild);
         }
 
         await client.updateBattlemetricsInstances();
         BattlemetricsHandler.handler(client, true);
         client.battlemetricsIntervalId = setInterval(BattlemetricsHandler.handler, 60000, client, false);
 
-        client.createRustplusInstancesFromConfig();
         client.startStreamDeckBridge();
     },
 };

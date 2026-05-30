@@ -30,6 +30,9 @@ const DiscordEmbeds = require('../discordTools/discordEmbeds.js');
 const DiscordTools = require('../discordTools/discordTools');
 const InstanceUtils = require('../util/instanceUtils.js');
 const Items = require('./Items');
+const GuildWorkManager = require('../util/guildWorkManager.js');
+const LicenseClient = require('../util/licenseClient.js');
+const LicenseMessages = require('../util/licenseMessages.js');
 const Logger = require('./Logger.js');
 const PermissionHandler = require('../handlers/permissionHandler.js');
 const RustLabs = require('../structures/RustLabs');
@@ -73,6 +76,7 @@ class DiscordBot extends Discord.Client {
         this.battlemetricsIntervalCounter = 0;
 
         this.voiceLeaveTimeouts = new Object();
+        this.activationOnlyTimers = new Object();
         this.streamDeckBridge = new StreamDeckBridge(this);
 
         this.loadDiscordCommands();
@@ -296,6 +300,136 @@ class DiscordBot extends Discord.Client {
         InstanceUtils.writeInstanceFile(guildId, instance);
     }
 
+    getDefaultLicenseState() {
+        return {
+            status: 'unlicensed',
+            licenseId: null,
+            assignedBotInstanceId: null,
+            plan: 'unlicensed',
+            featureFlags: {},
+            limits: {},
+            expiresAt: null,
+            lastValidatedAt: null,
+            validationGraceExpiresAt: null,
+            activationStartedAt: null,
+            activationExpiresAt: null
+        };
+    }
+
+    applyLicenseState(guildId, license) {
+        const instance = this.getInstance(guildId);
+        if (!instance) return;
+
+        instance.license = Object.assign(this.getDefaultLicenseState(), instance.license || {}, license || {});
+        this.setInstance(guildId, instance);
+    }
+
+    setGuildUnlicensed(guildId, status = 'unlicensed') {
+        const instance = this.getInstance(guildId);
+        if (!instance) return;
+
+        instance.license = Object.assign(this.getDefaultLicenseState(), instance.license || {}, {
+            status,
+            licenseId: null,
+            assignedBotInstanceId: null,
+            plan: 'unlicensed',
+            featureFlags: {},
+            limits: {},
+            expiresAt: null,
+            lastValidatedAt: null,
+            validationGraceExpiresAt: null
+        });
+        this.setInstance(guildId, instance);
+    }
+
+    isGuildLicensed(guildId) {
+        if (LicenseClient.isLicenseDisabled()) return true;
+
+        const instance = this.getInstance(guildId);
+        const license = instance ? instance.license : null;
+        if (!license) return false;
+        if (!['active', 'licensed'].includes(license.status)) return false;
+        if (license.assignedBotInstanceId && license.assignedBotInstanceId !== Config.fleet.instanceId) return false;
+        if (license.expiresAt && Date.parse(license.expiresAt) <= Date.now()) return false;
+
+        return true;
+    }
+
+    isGuildActivationOnly(guildId) {
+        const instance = this.getInstance(guildId);
+        const license = instance ? instance.license : null;
+        if (!license) return false;
+        if (license.status === 'activation_only') return true;
+        return license.activationExpiresAt && license.activationExpiresAt > Date.now() && !this.isGuildLicensed(guildId);
+    }
+
+    getActiveLicensedGuildCount() {
+        return Object.keys(this.instances || {}).filter(guildId => this.isGuildLicensed(guildId)).length;
+    }
+
+    async validateGuildLicense(guild) {
+        const instance = this.getInstance(guild.id);
+        const cachedLicense = instance ? instance.license : null;
+        const result = await LicenseClient.validateGuild(guild, cachedLicense);
+
+        if (result.ok && result.license) {
+            this.applyLicenseState(guild.id, result.license);
+        }
+
+        return result;
+    }
+
+    async enterActivationOnlyMode(guild, options = {}) {
+        const now = Date.now();
+        const expiresAt = now + Config.license.activationTimeoutMs;
+        const instance = this.getInstance(guild.id);
+        if (!instance) return;
+
+        instance.license = Object.assign(this.getDefaultLicenseState(), instance.license || {}, {
+            status: 'activation_only',
+            plan: 'unlicensed',
+            activationStartedAt: now,
+            activationExpiresAt: expiresAt
+        });
+        this.setInstance(guild.id, instance);
+
+        this.stopGuildWork(guild.id);
+
+        await require('../discordTools/RegisterSlashCommands')(this, guild);
+        await LicenseMessages.sendGuildMessage(
+            this,
+            guild,
+            options.message || 'RustAssist is waiting for license activation. Use /license activate to continue.',
+            'activation-only'
+        );
+
+        if (this.activationOnlyTimers[guild.id]) clearTimeout(this.activationOnlyTimers[guild.id]);
+        this.activationOnlyTimers[guild.id] = setTimeout(async () => {
+            const latestInstance = this.getInstance(guild.id);
+            if (!latestInstance || this.isGuildLicensed(guild.id)) return;
+
+            await LicenseMessages.leaveGuildWithMessage(
+                this,
+                guild,
+                'RustAssist was not activated in time, so it is leaving this Discord server.',
+                'activation-timeout'
+            );
+        }, Config.license.activationTimeoutMs);
+    }
+
+    stopGuildWork(guildId) {
+        GuildWorkManager.stopGuildWork(this, guildId);
+    }
+
+    async startLicensedGuildWork(guild) {
+        if (this.activationOnlyTimers[guild.id]) {
+            clearTimeout(this.activationOnlyTimers[guild.id]);
+            delete this.activationOnlyTimers[guild.id];
+        }
+
+        return await GuildWorkManager.startLicensedGuildWork(this, guild);
+    }
+
     readNotificationSettingsTemplate() {
         return JSON.parse(Fs.readFileSync(
             Path.join(__dirname, '..', 'templates/notificationSettingsTemplate.json'), 'utf8'));
@@ -307,6 +441,11 @@ class DiscordBot extends Discord.Client {
     }
 
     createRustplusInstance(guildId, serverIp, appPort, steamId, playerToken) {
+        if (!this.isGuildLicensed(guildId)) {
+            this.log('License', `Blocked Rust+ startup for unlicensed guild ${guildId}.`, 'warning');
+            return null;
+        }
+
         let rustplus = new RustPlus(guildId, serverIp, appPort, steamId, playerToken);
 
         /* Add rustplus instance to Object */
@@ -316,6 +455,22 @@ class DiscordBot extends Discord.Client {
         rustplus.build();
 
         return rustplus;
+    }
+
+    createRustplusInstanceFromConfig(guildId) {
+        const instance = this.getInstance(guildId);
+        if (!instance || !this.isGuildLicensed(guildId)) return null;
+
+        if (instance.activeServer !== null && instance.serverList.hasOwnProperty(instance.activeServer)) {
+            return this.createRustplusInstance(
+                guildId,
+                instance.serverList[instance.activeServer].serverIp,
+                instance.serverList[instance.activeServer].appPort,
+                instance.serverList[instance.activeServer].steamId,
+                instance.serverList[instance.activeServer].playerToken);
+        }
+
+        return null;
     }
 
     createRustplusInstancesFromConfig() {
@@ -328,14 +483,7 @@ class DiscordBot extends Discord.Client {
             const instance = this.getInstance(guildId);
             if (!instance) return;
 
-            if (instance.activeServer !== null && instance.serverList.hasOwnProperty(instance.activeServer)) {
-                this.createRustplusInstance(
-                    guildId,
-                    instance.serverList[instance.activeServer].serverIp,
-                    instance.serverList[instance.activeServer].appPort,
-                    instance.serverList[instance.activeServer].steamId,
-                    instance.serverList[instance.activeServer].playerToken);
-            }
+            this.createRustplusInstanceFromConfig(guildId);
         });
     }
 
@@ -421,6 +569,8 @@ class DiscordBot extends Discord.Client {
         /* Check for instances that are missing or need update. */
         for (const guild of this.guilds.cache) {
             const guildId = guild[0];
+            if (!this.isGuildLicensed(guildId)) continue;
+
             const instance = this.getInstance(guildId);
             const activeServer = instance.activeServer;
             if (activeServer !== null && instance.serverList.hasOwnProperty(activeServer)) {

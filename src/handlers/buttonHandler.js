@@ -30,6 +30,7 @@ const DiscordButtons = require('../discordTools/discordButtons.js');
 const DiscordModals = require('../discordTools/discordModals.js');
 const PlayerActivityDB = require('../util/database.js');
 const TrackerActivityReport = require('../util/trackerActivityReport.js');
+const LicenseGuard = require('../util/licenseGuard.js');
 
 module.exports = async (client, interaction) => {
     const instance = client.getInstance(interaction.guildId);
@@ -430,6 +431,8 @@ module.exports = async (client, interaction) => {
         });
     }
     else if (interaction.customId.startsWith('ServerConnect')) {
+        if (!LicenseGuard.guardGuildFeature(client, guildId, null).allowed) return;
+
         const ids = JSON.parse(interaction.customId.replace('ServerConnect', ''));
         const server = instance.serverList[ids.serverId];
 
@@ -456,6 +459,8 @@ module.exports = async (client, interaction) => {
         /* Create the rustplus instance */
         const newRustplus = client.createRustplusInstance(
             guildId, server.serverIp, server.appPort, server.steamId, server.playerToken);
+
+        if (!newRustplus) return;
 
         await DiscordMessages.sendServerMessage(guildId, ids.serverId, null, interaction);
 
