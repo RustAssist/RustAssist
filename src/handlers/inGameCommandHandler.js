@@ -42,7 +42,7 @@ module.exports = {
             return false;
         }
         else if (startsWithCommandPrefix && !client.licenseGuard.canRunGuildServices(guildId, 'rustplus')) {
-            client.licenseLifecycle.stopGuildServices(guildId);
+            await client.licenseLifecycle.stopGuildServices(guildId);
             return true;
         }
         else if (!rustplus.generalSettings.inGameCommandsEnabled) {

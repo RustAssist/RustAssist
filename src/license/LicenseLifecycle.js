@@ -1,5 +1,6 @@
 const Config = require('../../config');
 const Discord = require('discord.js');
+const DiscordMessages = require('../discordTools/discordMessages');
 
 class LicenseLifecycle {
     constructor(client) {
@@ -83,7 +84,7 @@ class LicenseLifecycle {
             return;
         }
 
-        this.stopGuildServices(guild.id);
+        await this.stopGuildServices(guild.id);
         this.client.log(
             'Warning',
             `Guild ${guild.id} is ${state.status}. Activation-only mode enabled; heavy services stopped.`,
@@ -121,15 +122,36 @@ class LicenseLifecycle {
         return savedState;
     }
 
-    stopGuildServices(guildId) {
-        if (this.client.rustplusInstances[guildId]) {
+    async stopGuildServices(guildId) {
+        const rustplus = this.client.rustplusInstances[guildId];
+        if (rustplus) {
+            const serverId = rustplus.serverId;
+            const instance = this.client.getInstance(guildId);
+
+            if (instance) {
+                instance.activeServer = null;
+                this.client.setInstance(guildId, instance);
+            }
+
+            this.client.resetRustplusVariables(guildId);
+
             try {
-                this.client.rustplusInstances[guildId].destroy();
+                rustplus.isDeleted = true;
+                rustplus.disconnect();
             }
             catch (e) {
-                /* Ignore shutdown errors. */
+                this.client.log('Warning', `Could not gracefully disconnect Rust+ for guild ${guildId}: ${e}`, 'warning');
             }
             delete this.client.rustplusInstances[guildId];
+
+            if (instance?.serverList?.[serverId]) {
+                try {
+                    await DiscordMessages.sendServerMessage(guildId, serverId, null);
+                }
+                catch (e) {
+                    this.client.log('Warning', `Could not update disconnected server message for guild ${guildId}: ${e}`, 'warning');
+                }
+            }
         }
 
         if (this.client.fcmListeners[guildId]) {
@@ -153,8 +175,6 @@ class LicenseLifecycle {
             }
             this.client.fcmListenersLite[guildId] = new Object();
         }
-
-        this.client.resetRustplusVariables(guildId);
     }
 
     scheduleLicenseExpiry(guildId) {
@@ -182,7 +202,7 @@ class LicenseLifecycle {
         );
     }
 
-    handleLicenseExpiryTimer(guildId) {
+    async handleLicenseExpiryTimer(guildId) {
         delete this.expiryTimers[guildId];
 
         const state = this.client.licenseCache.read(guildId);
@@ -191,10 +211,10 @@ class LicenseLifecycle {
             return;
         }
 
-        this.expireGuildNow(guildId);
+        await this.expireGuildNow(guildId);
     }
 
-    expireGuildNow(guildId) {
+    async expireGuildNow(guildId) {
         const state = this.client.licenseCache.read(guildId);
         if (state.status === 'active') return;
 
@@ -205,7 +225,7 @@ class LicenseLifecycle {
                 lifecycleState: 'expired',
             });
         }
-        this.stopGuildServices(guildId);
+        await this.stopGuildServices(guildId);
         this.client.log(
             'Warning',
             `Guild ${guildId} license is ${state.status}. Rust+ services stopped.`,
