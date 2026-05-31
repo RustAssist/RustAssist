@@ -1849,15 +1849,12 @@ class RustPlus extends RustPlusLib {
             try {
                 if (fs.existsSync(credentialsPath)) {
                     const credentialsData = JSON.parse(fs.readFileSync(credentialsPath, 'utf8'));
-                    console.log('Credentials data:', JSON.stringify(credentialsData, null, 2));
                     
                     if (credentialsData[callerSteamId]?.discord_user_id) {
                         const discordUserId = credentialsData[callerSteamId].discord_user_id;
-                        console.log(`Found Discord ID ${discordUserId} for SteamID ${callerSteamId}`);
                         playerNames = [discordUserId];
                     } else {
                         console.log(`No Discord ID linked for SteamID ${callerSteamId} in credentials`);
-                        console.log('Available Steam IDs in credentials:', Object.keys(credentialsData).filter(k => k !== 'hoster'));
                         return Client.client.intlGet(this.guildId, 'noLinkedUserFound');
                     }
                 } else {
@@ -1931,15 +1928,9 @@ class RustPlus extends RustPlusLib {
             let member = null;
             
             member = guild.members.cache.get(name);
-            console.log(`Looking for member with ID: ${name}`);
             
-            if (member) {
-                console.log(`Found member by ID: ${member.user.tag} (${member.id})`);
-            } else {
-                console.log(`No member found with ID: ${name}`);
-                
+            if (!member) {
                 const voiceMembers = guild.members.cache.filter(m => m.voice?.channelId);
-                console.log(`Searching in ${voiceMembers.size} voice members...`);
                 
                 member = voiceMembers.find(m => 
                     m.user.id === name ||
@@ -1957,7 +1948,6 @@ class RustPlus extends RustPlusLib {
                 }
                 
                 if (!member) {
-                    console.log('Searching in all members...');
                     member = guild.members.cache.find(m => {
                         const displayName = m.displayName?.toLowerCase();
                         const nickname = m.nickname?.toLowerCase();
@@ -1971,12 +1961,6 @@ class RustPlus extends RustPlusLib {
                                nickname?.includes(searchName) ||
                                username.includes(searchName);
                     });
-                }
-                
-                if (member) {
-                    console.log(`Found member by name: ${member.user.tag} (${member.id})`);
-                } else {
-                    console.log('No member found with any search method');
                 }
             }
 

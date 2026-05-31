@@ -73,6 +73,9 @@ module.exports = {
                             '',
                             'You can now use all bot features.',
                         ].join('\n'),
+                        null,
+                        true,
+                        false,
                     ),
                 );
             }
@@ -96,6 +99,9 @@ module.exports = {
                     `Plan: ${formatLicensePlan(state.plan)}`,
                     `Expires: ${formatLicenseExpiry(state.expiresAt)}`,
                 ].join('\n'),
+                null,
+                true,
+                false,
             ),
         );
     },
