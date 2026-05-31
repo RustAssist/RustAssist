@@ -36,6 +36,10 @@ module.exports = {
             const instance = client.getInstance(guildId);
             const rustplus = client.rustplusInstances[guildId];
 
+            if (!instance || !client.licenseGuard.canRunGuildServices(guildId, 'battlemetrics')) {
+                continue;
+            }
+
             if (!firstTime) await module.exports.handleBattlemetricsChanges(client, guildId);
 
             /* Update information channel battlemetrics players */
