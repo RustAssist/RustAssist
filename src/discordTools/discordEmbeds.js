@@ -1044,8 +1044,8 @@ module.exports = {
     },
 
     getHelpEmbed: function (guildId) {
-        const repository = 'https://github.com/auuruum/rustplusplus';
-        const credentials = `${repository}/blob/master/docs/credentials.md`;
+        const repository = 'https://github.com/RustAssist/RustAssist';
+        const credentials = `${repository}/blob/master/docs/credentials_web_version.md`;
         const pairServer = `${repository}/blob/master/docs/pair_and_connect_to_server.md`;
         const commands = `${repository}/blob/master/docs/commands.md`;
 
@@ -1057,7 +1057,7 @@ module.exports = {
         return module.exports.getEmbed({
             color: Constants.COLOR_DEFAULT,
             timestamp: true,
-            title: `rustplusplus Help`,
+            title: `RustAssist Help`,
             description: description
         });
     },

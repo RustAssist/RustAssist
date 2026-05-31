@@ -509,14 +509,14 @@ module.exports = {
                 module.exports.getButton({
                     style: Discord.ButtonStyle.Link,
                     label: 'REPOSITORY',
-                    url: 'https://github.com/auuruum/rustplusplus'
+                    url: 'https://github.com/RustAssist/RustAssist'
                 })
             ),
             new Discord.ActionRowBuilder().addComponents(
                 module.exports.getButton({
                     style: Discord.ButtonStyle.Link,
                     label: 'DOCUMENTATION',
-                    url: 'https://github.com/auuruum/rustplusplus/blob/master/docs/documentation.md'
+                    url: 'https://github.com/RustAssist/RustAssist/blob/master/docs/documentation.md'
                 }),
                 module.exports.getButton({
                     style: Discord.ButtonStyle.Link,
