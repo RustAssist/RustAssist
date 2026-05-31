@@ -15,11 +15,20 @@ function formatLicenseStatus(status) {
 function formatLicenseExpiry(expiresAt) {
     if (!expiresAt) return 'Never expires';
 
-    const time = Date.parse(expiresAt);
+    const expiryText = String(expiresAt);
+    const hasTimezone = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(expiryText);
+    const time = Date.parse(hasTimezone ? expiryText : `${expiryText}Z`);
     if (Number.isNaN(time)) return expiresAt;
 
-    const seconds = Math.floor(time / 1000);
-    return `<t:${seconds}:F> (<t:${seconds}:R>)`;
+    return new Intl.DateTimeFormat('en-GB', {
+        timeZone: 'UTC',
+        year: 'numeric',
+        month: 'short',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+    }).format(new Date(time)).replace(',', '') + ' UTC';
 }
 
 module.exports = {

@@ -34,7 +34,7 @@ def require_admin_token(authorization: str | None = Header(default=None)) -> Non
 def generate_raw_key() -> tuple[str, str, str]:
     prefix = "".join(secrets.choice(KEY_ALPHABET) for _ in range(8))
     secret = "".join(secrets.choice(KEY_ALPHABET) for _ in range(24))
-    return prefix, secret, f"RA-{prefix}-{secret}"
+    return prefix, secret, f"RPP-{prefix}-{secret}"
 
 
 def hash_key_secret(secret: str) -> str:
@@ -55,4 +55,3 @@ def parse_raw_key(raw_key: str) -> tuple[str, str]:
     if len(parts) != 3 or parts[0] != "RPP":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid key format")
     return parts[1], parts[2]
-

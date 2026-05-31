@@ -1,6 +1,20 @@
-from datetime import datetime
+from datetime import UTC, datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_serializer, field_validator
+
+
+def _as_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
+
+
+def _as_utc_storage(value: datetime) -> datetime:
+    return _as_utc(value).replace(tzinfo=None)
+
+
+def _format_utc(value: datetime) -> str:
+    return _as_utc(value).isoformat().replace("+00:00", "Z")
 
 
 class LicenseResponse(BaseModel):
@@ -12,6 +26,12 @@ class LicenseResponse(BaseModel):
     assignedRustplusBackend: str = "local"
     assignedRustplusProxyId: str | None = None
     proxyUrl: str | None = None
+
+    @field_serializer("expiresAt")
+    def serialize_expires_at(self, expires_at: datetime | None) -> str | None:
+        if expires_at is None:
+            return None
+        return _format_utc(expires_at)
 
 
 class ActivateRequest(BaseModel):
@@ -59,3 +79,10 @@ class GuildLicenseUpdate(BaseModel):
     plan: str | None = None
     expiresAt: datetime | None = None
     suspendedReason: str | None = None
+
+    @field_validator("expiresAt")
+    @classmethod
+    def validate_expires_at(cls, expires_at: datetime | None) -> datetime | None:
+        if expires_at is None:
+            return None
+        return _as_utc_storage(expires_at)
