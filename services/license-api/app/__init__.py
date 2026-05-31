@@ -1,0 +1,2 @@
+"""RustAssist license API."""
+

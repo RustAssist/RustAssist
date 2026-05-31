@@ -28,13 +28,6 @@ module.exports = {
     name: 'clientReady',
     once: true,
     async execute(client) {
-        for (const guild of client.guilds.cache) {
-            require('../util/CreateInstanceFile')(client, guild[1]);
-            require('../util/CreateCredentialsFile')(client, guild[1]);
-            client.fcmListenersLite[guild[0]] = new Object();
-        }
-
-        client.loadGuildsIntl();
         client.log(client.intlGet(null, 'infoCap'), client.intlGet(null, 'loggedInAs', {
             name: client.user.tag
         }));
@@ -69,8 +62,10 @@ module.exports = {
             catch (e) {
                 client.log(client.intlGet(null, 'warningCap'), client.intlGet(null, 'ignoreSetNickname'));
             }
-            await client.syncCredentialsWithUsers(guild);
-            await client.setupGuild(guild);
+            await client.licenseLifecycle.prepareGuild(guild);
+            if (client.getInstance(guild.id)) {
+                await client.syncCredentialsWithUsers(guild);
+            }
         }
 
         await client.updateBattlemetricsInstances();

@@ -26,7 +26,7 @@ module.exports = {
         reconnectIntervalMs: process.env.RPP_RECONNECT_INTERVAL || 15000,
     },
     discord: {
-        username: process.env.RPP_DISCORD_USERNAME || 'rustplusplus',
+        username: process.env.RPP_DISCORD_USERNAME || 'RustAssist',
         clientId: process.env.RPP_DISCORD_CLIENT_ID || '',
         token: process.env.RPP_DISCORD_TOKEN || '',
         needAdminPrivileges: process.env.RPP_NEED_ADMIN_PRIVILEGES || true, /* If true, only admins can delete (server, switch..), manage credentials and reset a channel */
@@ -35,7 +35,7 @@ module.exports = {
         token: process.env.RPP_BATTLEMETRICS_TOKEN || '',
     },
     streamDeck: {
-        enabled: process.env.RPP_STREAM_DECK_ENABLED === 'true',
+        enabled: process.env.RPP_STREAM_DECK_ENABLED === 'false',
         host: process.env.RPP_STREAM_DECK_HOST || 'localhost',
         port: process.env.RPP_STREAM_DECK_PORT || 8074,
         /* Per-guild passwords. Examples:
@@ -43,5 +43,23 @@ module.exports = {
            RPP_STREAM_DECK_API_PASSWORDS='{"1134548581378961473":"pass1","1033084565323001867":"pass2"}'
         */
         apiPasswords: process.env.RPP_STREAM_DECK_API_PASSWORDS || '',
+    },
+    license: {
+        apiUrl: process.env.RPP_LICENSE_API_URL || '',
+        apiToken: process.env.RPP_LICENSE_API_TOKEN || '',
+        timeoutMs: Number(process.env.RPP_LICENSE_API_TIMEOUT_MS || 5000),
+        graceMs: Number(process.env.RPP_LICENSE_GRACE_MS || 21600000),
+        unlicensedLeaveDelayMs: Number(process.env.RPP_UNLICENSED_LEAVE_DELAY_MS || 900000),
+        expiredLeaveAfterDays: Number(process.env.RPP_EXPIRED_LEAVE_AFTER_DAYS || 7),
+        expiredArchiveAfterDays: Number(process.env.RPP_EXPIRED_ARCHIVE_AFTER_DAYS || 14),
+        deleteCreatedChannelsOnLeave: process.env.RPP_DELETE_CREATED_CHANNELS_ON_LEAVE === 'true',
+        credentialsRetentionDays: Number(process.env.RPP_CREDENTIALS_RETENTION_DAYS || 14),
+    },
+    rustplusBackend: {
+        mode: process.env.RPP_RUSTPLUS_BACKEND || 'local',
+        proxyUrl: process.env.RPP_RUSTPLUS_PROXY_URL || '',
+        proxies: process.env.RPP_RUSTPLUS_PROXIES || '',
+        defaultProxyId: process.env.RPP_RUSTPLUS_DEFAULT_PROXY_ID || '',
+        allowLocalFallback: process.env.RPP_RUSTPLUS_ALLOW_LOCAL_FALLBACK === 'true',
     }
 };

@@ -1,0 +1,48 @@
+{
+  "free": {
+    "featureFlags": {
+      "rustplus": false,
+      "battlemetrics": false,
+      "notifications": false,
+      "maps": false,
+      "automation": false,
+      "smartDevices": false,
+      "teamChat": false,
+      "streamDeck": false,
+      "activityHistory": false,
+      "cameraControls": false,
+      "credentials": false,
+      "serverManagement": false
+    },
+    "limits": {
+      "maxRustServers": 0,
+      "maxPairedPlayers": 0,
+      "mapRefreshMinSeconds": 0,
+      "maxTrackers": 0,
+      "maxSmartDevices": 0
+    }
+  },
+  "pro": {
+    "featureFlags": {
+      "rustplus": true,
+      "battlemetrics": true,
+      "notifications": true,
+      "maps": true,
+      "automation": true,
+      "smartDevices": true,
+      "teamChat": true,
+      "streamDeck": true,
+      "activityHistory": true,
+      "cameraControls": true,
+      "credentials": true,
+      "serverManagement": true
+    },
+    "limits": {
+      "maxRustServers": 10,
+      "maxPairedPlayers": 50,
+      "mapRefreshMinSeconds": 60,
+      "maxTrackers": 50,
+      "maxSmartDevices": 250
+    }
+  }
+}

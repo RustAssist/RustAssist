@@ -30,8 +30,13 @@ const DiscordEmbeds = require('../discordTools/discordEmbeds.js');
 const DiscordTools = require('../discordTools/discordTools');
 const InstanceUtils = require('../util/instanceUtils.js');
 const Items = require('./Items');
+const LicenseApiClient = require('../license/LicenseApiClient');
+const LicenseCache = require('../license/LicenseCache');
+const LicenseGuard = require('../license/LicenseGuard');
+const LicenseLifecycle = require('../license/LicenseLifecycle');
 const Logger = require('./Logger.js');
 const PermissionHandler = require('../handlers/permissionHandler.js');
+const RustplusBackendManager = require('../rustplusBackend/RustplusBackendManager');
 const RustLabs = require('../structures/RustLabs');
 const RustPlus = require('../structures/RustPlus');
 const StreamDeckBridge = require('../util/streamDeckBridge.js');
@@ -74,6 +79,12 @@ class DiscordBot extends Discord.Client {
 
         this.voiceLeaveTimeouts = new Object();
         this.streamDeckBridge = new StreamDeckBridge(this);
+        this.licenseApiClient = new LicenseApiClient(Config.license);
+        this.licenseCache = new LicenseCache(Path.join(__dirname, '..', '..', 'licenses'));
+        this.licenseGuard = new LicenseGuard(this);
+        this.licenseLifecycle = new LicenseLifecycle(this);
+        this.rustplusBackendManager = new RustplusBackendManager(this);
+        this.log('Info', `License API ${this.licenseApiClient.getStatusSummary()}`);
 
         this.loadDiscordCommands();
         this.loadDiscordEvents();
@@ -133,6 +144,10 @@ class DiscordBot extends Discord.Client {
     }
 
     loadGuildIntl(guildId) {
+        if (!this.instances[guildId]) {
+            this.guildIntl[guildId] = this.botIntl;
+            return;
+        }
         const instance = InstanceUtils.readInstanceFile(guildId);
         const language = instance.generalSettings.language;
         const path = Path.join(__dirname, '..', 'languages', `${language}.json`);
@@ -154,7 +169,7 @@ class DiscordBot extends Discord.Client {
     intlGet(guildId, id, variables = {}) {
         let intl = null;
         if (guildId && guildId !== 'en') {
-            intl = this.guildIntl[guildId];
+            intl = this.guildIntl[guildId] || this.botIntl || this.enIntl;
         }
         else {
             if (guildId === 'en') {
@@ -233,11 +248,14 @@ class DiscordBot extends Discord.Client {
             await PermissionHandler.resetPermissionsAllChannels(this, guild);
         }
 
-        require('../util/FcmListener')(this, guild);
-        const credentials = InstanceUtils.readCredentialsFile(guild.id);
-        for (const steamId of Object.keys(credentials)) {
-            if (steamId !== credentials.hoster && steamId !== 'hoster') {
-                require('../util/FcmListenerLite')(this, guild, steamId);
+        if (this.licenseGuard.canRunGuildServices(guild.id, 'rustplus') &&
+            this.licenseGuard.canRunGuildServices(guild.id, 'credentials')) {
+            require('../util/FcmListener')(this, guild);
+            const credentials = InstanceUtils.readCredentialsFile(guild.id);
+            for (const steamId of Object.keys(credentials)) {
+                if (steamId !== credentials.hoster && steamId !== 'hoster') {
+                    require('../util/FcmListenerLite')(this, guild, steamId);
+                }
             }
         }
 
@@ -307,6 +325,10 @@ class DiscordBot extends Discord.Client {
     }
 
     createRustplusInstance(guildId, serverIp, appPort, steamId, playerToken) {
+        return this.rustplusBackendManager.createRustplusInstance(guildId, serverIp, appPort, steamId, playerToken);
+    }
+
+    createLocalRustplusInstance(guildId, serverIp, appPort, steamId, playerToken) {
         let rustplus = new RustPlus(guildId, serverIp, appPort, steamId, playerToken);
 
         /* Add rustplus instance to Object */
@@ -327,6 +349,7 @@ class DiscordBot extends Discord.Client {
             const guildId = file.replace('.json', '');
             const instance = this.getInstance(guildId);
             if (!instance) return;
+            if (!this.licenseGuard.canRunGuildServices(guildId, 'rustplus')) return;
 
             if (instance.activeServer !== null && instance.serverList.hasOwnProperty(instance.activeServer)) {
                 this.createRustplusInstance(
@@ -421,7 +444,9 @@ class DiscordBot extends Discord.Client {
         /* Check for instances that are missing or need update. */
         for (const guild of this.guilds.cache) {
             const guildId = guild[0];
+            if (!this.licenseGuard.canRunGuildServices(guildId, 'battlemetrics')) continue;
             const instance = this.getInstance(guildId);
+            if (!instance) continue;
             const activeServer = instance.activeServer;
             if (activeServer !== null && instance.serverList.hasOwnProperty(activeServer)) {
                 if (instance.serverList[activeServer].battlemetricsId !== null) {

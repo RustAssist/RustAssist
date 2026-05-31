@@ -25,10 +25,13 @@ const DiscordEmbeds = require('../discordTools/discordEmbeds');
 module.exports = {
     name: 'interactionCreate',
     async execute(client, interaction) {
+        if (!await client.licenseGuard.allowInteraction(interaction)) return;
+
         const instance = client.getInstance(interaction.guildId);
+        if (!instance && interaction.commandName !== 'license') return;
 
         /* Check so that the interaction comes from valid channels */
-        if (!Object.values(instance.channelId).includes(interaction.channelId) && !interaction.isCommand) {
+        if (instance && !Object.values(instance.channelId).includes(interaction.channelId) && !interaction.isCommand) {
             client.log(client.intlGet(null, 'warningCap'), client.intlGet(null, 'interactionInvalidChannel'))
             if (interaction.isButton()) {
                 try {
