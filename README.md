@@ -52,7 +52,51 @@ A NodeJS Discord Bot that uses the [rustplus.js](https://github.com/liamcottle/r
 
 > To run the bot, simply open the terminal of your choice and run the following from repository root:
 
-    $ npm start run
+    $ npm install
+    $ npm start
+
+If `RPP_LICENSE_API_URL` is empty, the bot runs in legacy local mode and behaves like the original bot.
+
+## **License API**
+
+Start the API locally:
+
+    $ cd services/license-api
+    $ uv sync --extra dev
+    $env:LICENSE_BOT_API_TOKEN="bot-dev-token"
+    $env:LICENSE_ADMIN_API_TOKEN="admin-dev-token"
+    $env:LICENSE_KEY_HASH_SECRET="replace-me"
+    $ uv run uvicorn app.main:app --reload --port 8088
+
+Generate one key:
+
+    $ uv run python -m app.cli generate-key --plan pro --duration 30d --count 1
+
+Enable license mode for the bot:
+
+    $env:RPP_LICENSE_API_URL="http://127.0.0.1:8088"
+    $env:RPP_LICENSE_API_TOKEN="bot-dev-token"
+    $ npm start
+
+In Discord, use `/license status` and `/license activate key:<generated-key>`.
+
+Runtime license cache is stored in `licenses/<guildId>.json`. Raw keys are never stored; the API stores HMAC-SHA256 hashes only.
+
+## **Rust+ backend modes**
+
+Default stays local:
+
+    $env:RPP_RUSTPLUS_BACKEND="local"
+
+Proxy-ready mode:
+
+    $env:RPP_RUSTPLUS_BACKEND="proxy"
+    $env:RPP_RUSTPLUS_DEFAULT_PROXY_ID="proxy-eu-1"
+    $env:RPP_RUSTPLUS_PROXY_URL="http://127.0.0.1:8090"
+
+API-assigned proxy mode reads `assignedRustplusBackend`, `assignedRustplusProxyId`, and `proxyUrl` from the License API:
+
+    $env:RPP_RUSTPLUS_BACKEND="api-assigned"
 
 
 ## **How to update the repository**

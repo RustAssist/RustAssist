@@ -4,6 +4,7 @@ instances
 credentials
 maps
 logs
+licenses
 temp
 data/staticData.sqlite-shm
 data/staticData.sqlite-wal
@@ -11,4 +12,10 @@ data/runtimeData.sqlite
 data/runtimeData.sqlite-shm
 data/runtimeData.sqlite-wal
 database
+services/license-api/*.sqlite
+services/license-api/*.sqlite-*
+services/license-api/data
 
+*.pyc
+/services/license-api/rustassist_license_api.egg-info
+/services/license-api/.venv

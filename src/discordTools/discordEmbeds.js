@@ -632,11 +632,11 @@ module.exports = {
         });
     },
 
-    getActionInfoEmbed: function (color, str, footer = null, ephemeral = true) {
+    getActionInfoEmbed: function (color, str, footer = null, ephemeral = true, codeBlock = true) {
         return {
             embeds: [module.exports.getEmbed({
                 color: color === 0 ? Constants.COLOR_DEFAULT : Constants.COLOR_INACTIVE,
-                description: `\`\`\`diff\n${(color === 0) ? '+' : '-'} ${str}\n\`\`\``,
+                description: codeBlock ? `\`\`\`diff\n${(color === 0) ? '+' : '-'} ${str}\n\`\`\`` : str,
                 footer: footer !== null ? { text: footer } : null
             })],
             ephemeral: ephemeral

@@ -22,6 +22,8 @@ const Discord = require('discord.js');
 const Fs = require('fs');
 const Path = require('path');
 
+loadEnvFile();
+
 const DiscordBot = require('./src/structures/DiscordBot');
 
 createMissingDirectories();
@@ -56,9 +58,45 @@ function createMissingDirectories() {
     if (!Fs.existsSync(Path.join(__dirname, 'maps'))) {
         Fs.mkdirSync(Path.join(__dirname, 'maps'));
     }
+
+    if (!Fs.existsSync(Path.join(__dirname, 'licenses'))) {
+        Fs.mkdirSync(Path.join(__dirname, 'licenses'));
+    }
     
     if (!Fs.existsSync(Path.join(__dirname, 'database'))) {
         Fs.mkdirSync(Path.join(__dirname, 'database'));
+    }
+}
+
+function loadEnvFile() {
+    const envPath = Path.join(__dirname, '.env');
+    if (!Fs.existsSync(envPath)) {
+        return;
+    }
+
+    const lines = Fs.readFileSync(envPath, 'utf8').split(/\r?\n/);
+    for (const line of lines) {
+        const trimmedLine = line.trim();
+        if (!trimmedLine || trimmedLine.startsWith('#')) {
+            continue;
+        }
+
+        const separatorIndex = trimmedLine.indexOf('=');
+        if (separatorIndex === -1) {
+            continue;
+        }
+
+        const key = trimmedLine.slice(0, separatorIndex).trim();
+        let value = trimmedLine.slice(separatorIndex + 1).trim();
+
+        if ((value.startsWith('"') && value.endsWith('"')) ||
+            (value.startsWith("'") && value.endsWith("'"))) {
+            value = value.slice(1, -1);
+        }
+
+        if (key && process.env[key] === undefined) {
+            process.env[key] = value;
+        }
     }
 }
 

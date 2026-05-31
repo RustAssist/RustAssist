@@ -11,6 +11,7 @@ COPY . /app
 
 VOLUME [ "/app/credentials" ]
 VOLUME [ "/app/instances" ]
+VOLUME [ "/app/licenses" ]
 VOLUME [ "/app/logs" ]
 VOLUME [ "/app/maps" ]
 

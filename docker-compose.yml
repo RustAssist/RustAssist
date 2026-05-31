@@ -1,13 +1,35 @@
 services:
+  license-api:
+    build:
+      context: ./services/license-api
+    container_name: rustassist-license-api
+    environment:
+      - LICENSE_BOT_API_TOKEN=CHANGE_ME_BOT_TOKEN
+      - LICENSE_ADMIN_API_TOKEN=CHANGE_ME_ADMIN_TOKEN
+      - LICENSE_KEY_HASH_SECRET=CHANGE_ME_HASH_SECRET
+      - LICENSE_DATABASE_URL=sqlite:////app/data/license-api.sqlite
+    volumes:
+      - ./services/license-api/data:/app/data
+    ports:
+      - "8088:8088"
+    restart: unless-stopped
+
   rustplusbot:
-    image: ghcr.io/faithix/rustplusplus:master
+    build:
+      context: .
     container_name: rustplusbot
     environment:
       - RPP_DISCORD_TOKEN=TOKEN
       - RPP_DISCORD_CLIENT_ID=CLIENT_ID
+      - RPP_LICENSE_API_URL=http://license-api:8088
+      - RPP_LICENSE_API_TOKEN=CHANGE_ME_BOT_TOKEN
+      - RPP_RUSTPLUS_BACKEND=local
     volumes:
       - ./logs:/app/logs
       - ./instances:/app/instances
       - ./credentials:/app/credentials
+      - ./licenses:/app/licenses
       - ./maps:/app/maps
+    depends_on:
+      - license-api
     restart: unless-stopped
