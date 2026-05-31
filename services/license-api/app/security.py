@@ -34,7 +34,7 @@ def require_admin_token(authorization: str | None = Header(default=None)) -> Non
 def generate_raw_key() -> tuple[str, str, str]:
     prefix = "".join(secrets.choice(KEY_ALPHABET) for _ in range(8))
     secret = "".join(secrets.choice(KEY_ALPHABET) for _ in range(24))
-    return prefix, secret, f"RPP-{prefix}-{secret}"
+    return prefix, secret, f"RA-{prefix}-{secret}"
 
 
 def hash_key_secret(secret: str) -> str:
