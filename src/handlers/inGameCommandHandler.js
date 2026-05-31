@@ -36,9 +36,14 @@ module.exports = {
         const callerName = message.broadcast.teamMessage.message.name;
         const commandLowerCase = command.toLowerCase();
         const prefix = rustplus.generalSettings.prefix;
+        const startsWithCommandPrefix = commandLowerCase.startsWith(prefix);
 
         if (!rustplus.isOperational) {
             return false;
+        }
+        else if (startsWithCommandPrefix && !client.licenseGuard.canRunGuildServices(guildId, 'rustplus')) {
+            client.licenseLifecycle.stopGuildServices(guildId);
+            return true;
         }
         else if (!rustplus.generalSettings.inGameCommandsEnabled) {
             return false;

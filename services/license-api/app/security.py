@@ -52,6 +52,6 @@ def verify_key_secret(secret: str, stored_hash: str) -> bool:
 
 def parse_raw_key(raw_key: str) -> tuple[str, str]:
     parts = raw_key.strip().upper().split("-")
-    if len(parts) != 3 or parts[0] != "RPP":
+    if len(parts) != 3 or parts[0] not in {"RA", "RPP"}:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid key format")
     return parts[1], parts[2]

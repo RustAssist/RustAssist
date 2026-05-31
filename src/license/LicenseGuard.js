@@ -19,10 +19,20 @@ class LicenseGuard {
         return this.client.licenseCache.hasFeature(guildId, feature);
     }
 
+    isStateActive(state) {
+        if (state.status !== 'active') return false;
+        if (!state.expiresAt) return true;
+
+        const expiresText = `${state.expiresAt}`;
+        const hasTimezone = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(expiresText);
+        const expiresAt = Date.parse(hasTimezone ? expiresText : `${expiresText}Z`);
+        return Number.isNaN(expiresAt) || expiresAt > Date.now();
+    }
+
     canRunGuildServices(guildId, feature = null) {
         if (!this.isEnabled()) return true;
         const state = this.client.licenseCache.read(guildId);
-        if (state.status !== 'active') return false;
+        if (!this.isStateActive(state)) return false;
         if (!feature) return true;
         return state.featureFlags?.[feature] === true;
     }
@@ -43,7 +53,7 @@ class LicenseGuard {
         if (this.isLicenseCommand(interaction)) return true;
 
         const state = this.client.licenseCache.read(interaction.guildId);
-        if (state.status !== 'active') {
+        if (!this.isStateActive(state)) {
             await this.replyBlocked(
                 interaction,
                 'License required. Use `/license activate` or `/license status`.',
@@ -62,4 +72,3 @@ class LicenseGuard {
 }
 
 module.exports = LicenseGuard;
-

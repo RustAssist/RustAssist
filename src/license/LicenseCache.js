@@ -30,12 +30,36 @@ class LicenseCache {
         };
     }
 
+    parseExpiresAt(expiresAt) {
+        if (!expiresAt) return null;
+
+        const expiryText = String(expiresAt);
+        const hasTimezone = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(expiryText);
+        const time = Date.parse(hasTimezone ? expiryText : `${expiryText}Z`);
+        return Number.isNaN(time) ? null : time;
+    }
+
+    applyLocalExpiry(state) {
+        const expiresAtMs = this.parseExpiresAt(state.expiresAt);
+        if (state.status === 'active' && expiresAtMs !== null && expiresAtMs <= Date.now()) {
+            return {
+                ...state,
+                status: 'expired',
+                lifecycleState: 'expired',
+            };
+        }
+        return state;
+    }
+
     read(guildId) {
         const path = this.getPath(guildId);
         if (!Fs.existsSync(path)) return this.defaultState();
 
         try {
-            return { ...this.defaultState(), ...JSON.parse(Fs.readFileSync(path, 'utf8')) };
+            return this.applyLocalExpiry({
+                ...this.defaultState(),
+                ...JSON.parse(Fs.readFileSync(path, 'utf8')),
+            });
         }
         catch (e) {
             return this.defaultState();
@@ -51,12 +75,12 @@ class LicenseCache {
     }
 
     saveApiState(guildId, state) {
-        return this.write(guildId, {
+        return this.write(guildId, this.applyLocalExpiry({
             ...this.defaultState(state.status),
             ...state,
             lastValidatedAt: new Date().toISOString(),
             lifecycleState: state.status,
-        });
+        }));
     }
 
     isActive(guildId) {
@@ -72,4 +96,3 @@ class LicenseCache {
 }
 
 module.exports = LicenseCache;
-

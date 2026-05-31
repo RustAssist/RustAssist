@@ -5,6 +5,7 @@ class LicenseLifecycle {
     constructor(client) {
         this.client = client;
         this.leaveTimers = {};
+        this.expiryTimers = {};
         this.lastApiErrorLogAt = {};
         this.loggedApiConnected = false;
     }
@@ -29,7 +30,9 @@ class LicenseLifecycle {
                 'Info',
                 `License validate OK for guild ${guildId}: status=${state.status}, plan=${state.plan}`,
             );
-            return this.client.licenseCache.saveApiState(guildId, state);
+            const savedState = this.client.licenseCache.saveApiState(guildId, state);
+            this.scheduleLicenseExpiry(guildId);
+            return savedState;
         }
         catch (e) {
             const message = e?.response?.data?.detail || e.message || e;
@@ -63,6 +66,7 @@ class LicenseLifecycle {
             this.createGuildFiles(guild);
             this.client.loadGuildIntl(guild.id);
             await this.client.setupGuild(guild);
+            this.scheduleLicenseExpiry(guild.id);
             return;
         }
 
@@ -103,17 +107,18 @@ class LicenseLifecycle {
         }
 
         const state = await this.client.licenseApiClient.activateGuild(guild.id, rawKey, activatedBy);
-        this.client.licenseCache.saveApiState(guild.id, state);
-        if (state.status === 'active') {
+        const savedState = this.client.licenseCache.saveApiState(guild.id, state);
+        if (savedState.status === 'active') {
             this.client.log(
                 'Info',
-                `License activated for guild ${guild.id}: plan=${state.plan}, expires=${state.expiresAt}`,
+                `License activated for guild ${guild.id}: plan=${savedState.plan}, expires=${savedState.expiresAt}`,
             );
             this.createGuildFiles(guild);
             this.client.loadGuildIntl(guild.id);
             await this.client.setupGuild(guild);
+            this.scheduleLicenseExpiry(guild.id);
         }
-        return state;
+        return savedState;
     }
 
     stopGuildServices(guildId) {
@@ -150,6 +155,62 @@ class LicenseLifecycle {
         }
 
         this.client.resetRustplusVariables(guildId);
+    }
+
+    scheduleLicenseExpiry(guildId) {
+        if (!this.isEnabled()) return;
+
+        if (this.expiryTimers[guildId]) {
+            clearTimeout(this.expiryTimers[guildId]);
+            delete this.expiryTimers[guildId];
+        }
+
+        const state = this.client.licenseCache.read(guildId);
+        const expiresAtMs = this.client.licenseCache.parseExpiresAt(state.expiresAt);
+        if (state.status !== 'active' || expiresAtMs === null) return;
+
+        const delay = expiresAtMs - Date.now();
+        if (delay <= 0) {
+            this.expireGuildNow(guildId);
+            return;
+        }
+
+        const maxTimerDelay = 2147483647;
+        this.expiryTimers[guildId] = setTimeout(
+            () => this.handleLicenseExpiryTimer(guildId),
+            Math.min(delay, maxTimerDelay),
+        );
+    }
+
+    handleLicenseExpiryTimer(guildId) {
+        delete this.expiryTimers[guildId];
+
+        const state = this.client.licenseCache.read(guildId);
+        if (state.status === 'active') {
+            this.scheduleLicenseExpiry(guildId);
+            return;
+        }
+
+        this.expireGuildNow(guildId);
+    }
+
+    expireGuildNow(guildId) {
+        const state = this.client.licenseCache.read(guildId);
+        if (state.status === 'active') return;
+
+        if (state.status === 'expired') {
+            this.client.licenseCache.write(guildId, {
+                ...state,
+                status: 'expired',
+                lifecycleState: 'expired',
+            });
+        }
+        this.stopGuildServices(guildId);
+        this.client.log(
+            'Warning',
+            `Guild ${guildId} license is ${state.status}. Rust+ services stopped.`,
+            'warning',
+        );
     }
 
     scheduleUnlicensedLeave(guild) {
