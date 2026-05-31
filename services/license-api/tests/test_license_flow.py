@@ -18,7 +18,7 @@ def test_key_activation_and_validation():
     key_response = client.post(
         "/admin/keys",
         headers={"Authorization": "Bearer admin"},
-        json={"plan": "pro", "durationDays": 1, "durationSeconds": 300, "count": 1},
+        json={"plan": "pro", "durationSeconds": 300, "count": 1},
     )
     assert key_response.status_code == 200
     key = key_response.json()[0]["key"]

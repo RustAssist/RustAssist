@@ -83,8 +83,7 @@ def generate_keys(payload: GenerateKeysRequest, db: DbSession) -> list[Generated
                 key_prefix=prefix,
                 key_hash=hash_key_secret(secret),
                 plan=payload.plan,
-                duration_days=payload.durationDays,
-                duration_seconds=payload.durationSeconds or payload.durationDays * 86400,
+                duration_seconds=payload.durationSeconds,
                 max_uses=payload.maxUses,
                 note=payload.note,
             )
@@ -94,8 +93,7 @@ def generate_keys(payload: GenerateKeysRequest, db: DbSession) -> list[Generated
                 key=raw_key,
                 prefix=prefix,
                 plan=payload.plan,
-                durationDays=payload.durationDays,
-                durationSeconds=payload.durationSeconds or payload.durationDays * 86400,
+                durationSeconds=payload.durationSeconds,
                 maxUses=payload.maxUses,
             )
         )
@@ -110,8 +108,7 @@ def list_keys(db: DbSession) -> list[dict]:
         {
             "prefix": key.key_prefix,
             "plan": key.plan,
-            "durationDays": key.duration_days,
-            "durationSeconds": key.duration_seconds or key.duration_days * 86400,
+            "durationSeconds": key.duration_seconds,
             "maxUses": key.max_uses,
             "usedCount": key.used_count,
             "status": key.status,

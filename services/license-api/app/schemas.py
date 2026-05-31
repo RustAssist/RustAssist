@@ -41,8 +41,7 @@ class ActivateRequest(BaseModel):
 
 class GenerateKeysRequest(BaseModel):
     plan: str = "pro"
-    durationDays: int = Field(default=30, ge=1)
-    durationSeconds: int | None = Field(default=None, ge=60)
+    durationSeconds: int = Field(default=30 * 86400, ge=1)
     count: int = Field(default=1, ge=1, le=100)
     maxUses: int = Field(default=1, ge=1)
     note: str | None = None
@@ -52,7 +51,6 @@ class GeneratedKey(BaseModel):
     key: str
     prefix: str
     plan: str
-    durationDays: int
     durationSeconds: int
     maxUses: int
 

@@ -98,8 +98,7 @@ def activate_key(
 
         old_expires_at = guild_license.expires_at
         base_time = max(datetime.utcnow(), old_expires_at) if old_expires_at else datetime.utcnow()
-        duration_seconds = key.duration_seconds or key.duration_days * 86400
-        new_expires_at = base_time + timedelta(seconds=duration_seconds)
+        new_expires_at = base_time + timedelta(seconds=key.duration_seconds)
 
         guild_license.plan = key.plan
         guild_license.status = "active"

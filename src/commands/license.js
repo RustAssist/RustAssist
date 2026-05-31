@@ -31,6 +31,21 @@ function formatLicenseExpiry(expiresAt) {
     }).format(new Date(time)).replace(',', '') + ' UTC';
 }
 
+function getPublicLicenseError(error) {
+    const apiMessage = error?.response?.data?.detail;
+    if (apiMessage) return apiMessage;
+
+    if (error?.code === 'ECONNREFUSED' || error?.code === 'ECONNABORTED' || error?.code === 'ENOTFOUND') {
+        return 'License service is temporarily unavailable. Please try again later.';
+    }
+
+    if (error?.request && !error?.response) {
+        return 'License service did not respond. Please try again later.';
+    }
+
+    return 'Could not complete the license request. Please try again later.';
+}
+
 module.exports = {
     name: 'license',
 
@@ -89,7 +104,8 @@ module.exports = {
                 );
             }
             catch (e) {
-                const message = e?.response?.data?.detail || e.message || 'Activation failed';
+                client.log('Error', `License activation failed for guild ${interaction.guildId}: ${e.stack || e}`, 'error');
+                const message = getPublicLicenseError(e);
                 await client.interactionEditReply(
                     interaction,
                     DiscordEmbeds.getActionInfoEmbed(1, `Activation failed: ${message}`),
@@ -98,20 +114,29 @@ module.exports = {
             return;
         }
 
-        const state = await client.licenseLifecycle.validateGuild(interaction.guildId);
-        await client.interactionEditReply(
-            interaction,
-            DiscordEmbeds.getActionInfoEmbed(
-                0,
-                [
-                    `License status: ${formatLicenseStatus(state.status)}`,
-                    `Plan: ${formatLicensePlan(state.plan)}`,
-                    `Expires: ${formatLicenseExpiry(state.expiresAt)}`,
-                ].join('\n'),
-                null,
-                true,
-                false,
-            ),
-        );
+        try {
+            const state = await client.licenseLifecycle.validateGuild(interaction.guildId);
+            await client.interactionEditReply(
+                interaction,
+                DiscordEmbeds.getActionInfoEmbed(
+                    0,
+                    [
+                        `License status: ${formatLicenseStatus(state.status)}`,
+                        `Plan: ${formatLicensePlan(state.plan)}`,
+                        `Expires: ${formatLicenseExpiry(state.expiresAt)}`,
+                    ].join('\n'),
+                    null,
+                    true,
+                    false,
+                ),
+            );
+        }
+        catch (e) {
+            client.log('Error', `License status failed for guild ${interaction.guildId}: ${e.stack || e}`, 'error');
+            await client.interactionEditReply(
+                interaction,
+                DiscordEmbeds.getActionInfoEmbed(1, getPublicLicenseError(e)),
+            );
+        }
     },
 };
